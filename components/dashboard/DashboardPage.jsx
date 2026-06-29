@@ -24,14 +24,15 @@ export default function DashboardPage() {
 
         <div className="grid gap-4 md:grid-cols-3">
           <button
-            onClick={() => router.push("/generator")}
+          onClick={() => router.push("/generator?subject=informatyka")}
+           
             className="rounded-xl border border-zinc-800 bg-zinc-900 p-6 text-left hover:border-violet-500 transition-colors"
           >
             Informatyka
           </button>
 
           <button
-            onClick={() => router.push("/generator")}
+         onClick={() => router.push("/generator?subject=programowanie-obiektowe")}
             className="rounded-xl border border-zinc-800 bg-zinc-900 p-6 text-left hover:border-violet-500 transition-colors"
           >
             Programowanie obiektowe
@@ -40,7 +41,7 @@ export default function DashboardPage() {
           <button
             className="rounded-xl border border-dashed border-zinc-700 p-6 text-left text-zinc-400"
           >
-            Dodaj przedmiot
+           + Dodaj przedmiot
           </button>
         </div>
       </div>

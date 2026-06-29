@@ -9,7 +9,7 @@ export default function HistoriaPage() {
         href="/dashboard"
         className="inline-flex items-center text-sm text-zinc-400 hover:text-zinc-100 transition-colors"
       >
-        ← Dashboard
+        ← Wróć do wyboru przedmiotu
       </Link>
 
       <h1 className="text-3xl font-bold">

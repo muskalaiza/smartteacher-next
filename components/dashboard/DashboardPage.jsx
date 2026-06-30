@@ -19,30 +19,44 @@ export default function DashboardPage() {
 
       <div>
         <h2 className="text-xl font-semibold text-zinc-100 mb-4">
-          Twoje przedmioty
+          Przedmioty dodane do bazy
         </h2>
 
         <div className="grid gap-4 md:grid-cols-3">
           <button
           onClick={() => router.push("/generator?subject=informatyka")}
            
-            className="rounded-xl border border-zinc-800 bg-zinc-900 p-6 text-left hover:border-violet-500 transition-colors"
+            className="group rounded-xl border border-zinc-800 bg-zinc-900 p-6 text-left text-zinc-300 transition-all duration-150 hover:border-zinc-700 hover:bg-zinc-800 hover:text-zinc-100"
           >
             Informatyka
           </button>
 
           <button
          onClick={() => router.push("/generator?subject=programowanie-obiektowe")}
-            className="rounded-xl border border-zinc-800 bg-zinc-900 p-6 text-left hover:border-violet-500 transition-colors"
+            className="group rounded-xl border border-zinc-800 bg-zinc-900 p-6 text-left text-zinc-300 transition-all duration-150 hover:border-zinc-700 hover:bg-zinc-800 hover:text-zinc-100"
           >
             Programowanie obiektowe
           </button>
-
           <button
-            className="rounded-xl border border-dashed border-zinc-700 p-6 text-left text-zinc-400"
+          onClick={() => router.push("/generator?subject=aplikacje-mobilne")}
+           
+            className="group rounded-xl border border-zinc-800 bg-zinc-900 p-6 text-left text-zinc-300 transition-all duration-150 hover:border-zinc-700 hover:bg-zinc-800 hover:text-zinc-100"
           >
-           + Dodaj przedmiot
+            Aplikacje mobilne
           </button>
+          <button
+          onClick={() => router.push("/generator?subject=aplikacje-desktopowe")}
+           
+           className="group rounded-xl border border-zinc-800 bg-zinc-900 p-6 text-left text-zinc-300 transition-all duration-150 hover:border-zinc-700 hover:bg-zinc-800 hover:text-zinc-100"
+          >
+            Aplikacje desktopowe
+          </button>
+          <button
+          
+  className="rounded-xl border border-dashed border-zinc-700 p-6 text-left text-zinc-400 transition-all duration-150 hover:border-zinc-500 hover:bg-zinc-900 hover:text-zinc-100"
+>
+  + Dodaj przedmiot
+</button>
         </div>
       </div>
     </div>

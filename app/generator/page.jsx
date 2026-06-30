@@ -6,6 +6,8 @@ import { useSearchParams } from "next/navigation";
 const SUBJECT_LABELS = {
   informatyka: "Informatyka",
   "programowanie-obiektowe": "Programowanie obiektowe",
+  "aplikacje-mobilne": "Aplikacje mobilne",
+  "aplikacje-desktopowe": "Aplikacje desktopowe",
 };
 
 const MATERIAL_TYPES = [

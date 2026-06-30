@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 
 export const metadata = {
   title: "SmartTeacherApp",
-  description: "Inteligentna aplikacji do generowania materiałów edukacyjnych",
+  description: "Inteligentna aplikacja do generowania materiałów edukacyjnych",
 };
 
 export default function RootLayout({ children }) {

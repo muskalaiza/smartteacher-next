@@ -10,6 +10,7 @@ const SUBJECT_LABELS = {
   "aplikacje-desktopowe": "Aplikacje desktopowe",
 };
 
+
 const MATERIAL_TYPES = [
   {
     value: "karta-pracy",
@@ -58,10 +59,10 @@ export default function GeneratorPage() {
             Generator materiałów
           </h1>
 
-          <p className="text-sm leading-6 text-zinc-400">
-            Przygotuj kartę pracy, kartkówkę albo sprawdzian na podstawie
-            tematu lekcji lub działu i profili uczniów w klasie.
-          </p>
+        <p className="text-sm leading-6 text-zinc-400">
+  Przygotuj kartę pracy, kartkówkę albo sprawdzian na podstawie
+  działu, tematu lekcji i profili uczniów w klasie.
+</p>
         </div>
       </header>
 
@@ -77,27 +78,77 @@ export default function GeneratorPage() {
                   Określ zakres materiału
                 </h2>
               </div>
+<div className="grid gap-4 md:grid-cols-2">
+  <div className="space-y-2">
+    <label
+      htmlFor="section"
+      className="text-sm font-semibold text-zinc-100"
+    >
+      Dział
+    </label>
 
-              <div className="space-y-2">
-                <label
-                  htmlFor="lessonTopic"
-                  className="text-sm font-semibold text-zinc-100"
-                >
-                  Temat lekcji lub dział
-                </label>
+    <select
+      id="section"
+      defaultValue=""
+      className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-4 py-3 text-sm text-zinc-100 outline-none transition focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20"
+    >
+      <option value="" disabled>
+        Wybierz dział
+      </option>
+      <option value="algorytmika">Algorytmika</option>
+      <option value="programowanie">Programowanie</option>
+    </select>
 
-                <input
-                  id="lessonTopic"
-                  type="text"
-                  placeholder="np. Zmienne w Pythonie albo Programowanie"
-                  className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-4 py-3 text-sm text-zinc-100 outline-none transition placeholder:text-zinc-500 focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20"
-                />
+    <p className="text-xs text-zinc-500">
+      Dział określa główny zakres materiału, np. dla sprawdzianu.
+    </p>
+  </div>
 
-                <p className="text-xs text-zinc-500">
-                  Na tym ekranie nauczyciel wskazuje, z jakiego zakresu ma
-                  powstać materiał.
-                </p>
-              </div>
+  <div className="space-y-2">
+    <label
+      htmlFor="subtopic"
+      className="text-sm font-semibold text-zinc-100"
+    >
+      Temat lekcji
+    </label>
+
+    <select
+      id="subtopic"
+      defaultValue=""
+      className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-4 py-3 text-sm text-zinc-100 outline-none transition focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20"
+    >
+      <option value="" disabled>
+        Wybierz temat lekcji
+      </option>
+      <option value="prog_zmienne">Zmienne</option>
+      <option value="prog_typy_danych">Typy danych</option>
+      <option value="prog_warunki">Instrukcje warunkowe</option>
+      <option value="prog_petla_for">Pętla for</option>
+      <option value="prog_petla_while">Pętla while</option>
+      <option value="prog_funkcje">Funkcje</option>
+      <option value="prog_tablice">Tablice</option>
+      <option value="alg_systemy_pozycyjne">Systemy pozycyjne</option>
+      <option value="alg_system_binarny">System binarny</option>
+      <option value="alg_konwersja_bin_dec">
+        Konwersja binarna na dziesiętną
+      </option>
+      <option value="alg_konwersja_dec_bin">
+        Konwersja dziesiętna na binarną
+      </option>
+      <option value="alg_reprezentacja_algorytmow">
+        Reprezentacja algorytmów
+      </option>
+      <option value="alg_lista_krokow">Lista kroków</option>
+      <option value="alg_schemat_blokowy">Schemat blokowy</option>
+      <option value="alg_pseudokod">Pseudokod</option>
+    </select>
+
+    <p className="text-xs text-zinc-500">
+      Temat lekcji będzie wymagany dla karty pracy i kartkówki.
+    </p>
+  </div>
+</div>
+              
             </div>
 
             <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_260px]">

@@ -97,7 +97,7 @@ export default function LoginForm({
           onClick={onResetPasswordClick}
           className="font-medium text-zinc-200 underline-offset-4 transition-colors hover:text-white hover:underline"
         >
-          Zmień hasło
+          Zresetuj hasło
         </button>
       </p>
 

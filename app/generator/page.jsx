@@ -1,7 +1,7 @@
-"use client";
+
 
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+//import { useSearchParams } from "next/navigation";
 
 const SUBJECT_LABELS = {
   informatyka: "Informatyka",
@@ -37,10 +37,10 @@ const STUDENT_PROFILES = [
   "Uczeń obcojęzyczny",
 ];
 
-export default function GeneratorPage() {
-  const searchParams = useSearchParams();
-  const subject = searchParams.get("subject");
- const subjectLabel = SUBJECT_LABELS[subject] || "Nie wybrano przedmiotu";
+export default async function GeneratorPage({ searchParams }) {
+  const params = await searchParams;
+  const subject = params?.subject;
+  const subjectLabel = SUBJECT_LABELS[subject] || "Nie wybrano przedmiotu";
 
   return (
     <div className="space-y-8">

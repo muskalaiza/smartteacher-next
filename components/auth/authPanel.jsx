@@ -31,7 +31,7 @@ export default function AuthPanel() {
     })
 
     if (error) {
-      setLoginError("Nie udało się zalogować. Sprawdź e-mail i hasło.")
+      setLoginError("Adres e-mail nie został jeszcze potwierdzony. Sprawdź skrzynkę i kliknij link aktywacyjny.")
       return
     }
 
@@ -56,7 +56,7 @@ export default function AuthPanel() {
 
     setLoginEmail(email)
 
-    return "Konto zostało utworzone. Jeśli Supabase wymaga potwierdzenia adresu e-mail, sprawdź skrzynkę pocztową."
+    return "Konto zostało utworzone. Sprawdź skrzynkę pocztową i potwierdź adres e-mail."
   }
 
   async function handleResetPassword(email) {

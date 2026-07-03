@@ -38,10 +38,14 @@ export default function RegisterForm({
       return
     }
 
-    if (password.length < 8) {
-      setRegisterError("Hasło powinno mieć co najmniej 8 znaków.")
-      return
-    }
+   const hasMinimumLength = password.length >= 8
+const hasLetter = /\p{L}/u.test(password)
+const hasDigit = /\d/.test(password)
+
+if (!hasMinimumLength || !hasLetter || !hasDigit) {
+  setRegisterError("Hasło powinno mieć co najmniej 8 znaków oraz zawierać co najmniej jedną literę i jedną cyfrę.")
+  return
+}
 
     if (password !== passwordRepeat) {
       setRegisterError("Hasła nie są takie same.")
@@ -148,7 +152,7 @@ setRegisterMessage(
           type="password"
           required
           autoComplete="off"
-          placeholder="Minimum 8 znaków"
+          placeholder="Wpisz bezpieczne hasło."
           value={password}
           onChange={(event) => setPassword(event.target.value)}
           className="w-full rounded-md border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm text-zinc-200 transition-colors placeholder:text-zinc-600 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"

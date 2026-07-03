@@ -1,13 +1,20 @@
 "use client"
 
 import Link from "next/link"
+import { supabase } from "@/lib/supabaseClient"
 import ChangePasswordForm from "@/components/auth/changePasswordForm"
 
 export default function ChangePasswordPage() {
-  async function handleChangePassword() {
-    throw new Error(
-      "Zmiana hasła wymaga podłączenia Supabase. Ten etap zostanie wykonany później."
-    )
+  async function handleChangePassword(password) {
+    const { error } = await supabase.auth.updateUser({
+      password,
+    })
+
+    if (error) {
+      throw new Error(error.message || "Nie udało się zmienić hasła.")
+    }
+
+    await supabase.auth.signOut()
   }
 
   return (
@@ -41,4 +48,3 @@ export default function ChangePasswordPage() {
     </div>
   )
 }
-

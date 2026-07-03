@@ -1,31 +1,77 @@
-/*
-→ trzyma stan: aktualny widok formularza
-→ przełącza formularze: login / register / reset
-→ nie zawiera pól formularzy
-*/
-
 "use client"
 
 import React, { useState } from "react"
+import { useRouter } from "next/navigation"
+import { supabase } from "@/lib/supabaseClient"
 import LoginForm from "./loginForm"
 import RegisterForm from "./registerForm"
 import ResetPasswordForm from "./resetPasswordForm"
 
-export default function AuthPanel({
-  loginEmail,
-  loginPassword,
-  loginError,
-  setLoginEmail,
-  setLoginPassword,
-  handleLogin,
-  handleRegister,
-  handleResetPassword,
-}) {
+export default function AuthPanel() {
+  const router = useRouter()
+
   const [mode, setMode] = useState("login")
+  const [loginEmail, setLoginEmail] = useState("")
+  const [loginPassword, setLoginPassword] = useState("")
+  const [loginError, setLoginError] = useState("")
 
   const isLoginMode = mode === "login"
   const isRegisterMode = mode === "register"
   const isResetMode = mode === "reset"
+
+  async function handleLogin(event) {
+    event.preventDefault()
+    setLoginError("")
+
+    const email = loginEmail.trim()
+
+    const { error } = await supabase.auth.signInWithPassword({
+      email,
+      password: loginPassword,
+    })
+
+    if (error) {
+      setLoginError("Nie udało się zalogować. Sprawdź e-mail i hasło.")
+      return
+    }
+
+    setLoginPassword("")
+    router.push("/dashboard")
+  }
+
+  async function handleRegister({ email, password, fullName }) {
+    const { error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        data: {
+          full_name: fullName,
+        },
+      },
+    })
+
+    if (error) {
+      throw new Error(error.message || "Nie udało się utworzyć konta.")
+    }
+
+    setLoginEmail(email)
+
+    return "Konto zostało utworzone. Jeśli Supabase wymaga potwierdzenia adresu e-mail, sprawdź skrzynkę pocztową."
+  }
+
+  async function handleResetPassword(email) {
+    const redirectTo = `${window.location.origin}/zmien-haslo`
+
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo,
+    })
+
+    if (error) {
+      throw new Error(
+        error.message || "Nie udało się wysłać linku do zmiany hasła."
+      )
+    }
+  }
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-zinc-950 p-4 font-sans">
@@ -58,8 +104,14 @@ export default function AuthPanel({
             setLoginEmail={setLoginEmail}
             setLoginPassword={setLoginPassword}
             handleLogin={handleLogin}
-            onRegisterClick={() => setMode("register")}
-            onResetPasswordClick={() => setMode("reset")}
+            onRegisterClick={() => {
+              setLoginError("")
+              setMode("register")
+            }}
+            onResetPasswordClick={() => {
+              setLoginError("")
+              setMode("reset")
+            }}
           />
         )}
 

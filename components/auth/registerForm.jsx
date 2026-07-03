@@ -17,12 +17,14 @@ export default function RegisterForm({
   const [password, setPassword] = useState("")
   const [passwordRepeat, setPasswordRepeat] = useState("")
   const [registerError, setRegisterError] = useState("")
+  const [registerMessage, setRegisterMessage] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   async function onSubmit(event) {
     event.preventDefault()
     setRegisterError("")
-
+    setRegisterMessage("")
+    
     const trimmedFullName = fullName.trim()
     const trimmedEmail = loginEmail.trim()
 
@@ -51,14 +53,21 @@ export default function RegisterForm({
       return
     }
 
+    
     setIsSubmitting(true)
 
     try {
-      await handleRegister({
-        email: trimmedEmail,
-        password,
-        fullName: trimmedFullName,
-      })
+     const message = await handleRegister({
+  email: trimmedEmail,
+  password,
+  fullName: trimmedFullName,
+})
+setFullName("")
+setPassword("")
+setPasswordRepeat("")
+setRegisterMessage(
+  message || "Konto zostało utworzone. Sprawdź skrzynkę e-mail, aby potwierdzić rejestrację."
+)
     } catch (error) {
       setRegisterError(
         error?.message || "Nie udało się utworzyć konta. Spróbuj ponownie."
@@ -75,6 +84,13 @@ export default function RegisterForm({
           {registerError}
         </div>
       )}
+
+      {registerMessage && (
+  <div className="rounded-md border border-emerald-900/50 bg-emerald-950/30 p-2.5 text-center text-xs leading-relaxed text-emerald-400">
+    {registerMessage}
+  </div>
+)}
+
 
       <div className="space-y-1.5">
         <label

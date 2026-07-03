@@ -22,6 +22,7 @@ SmartTeacher nie jest prostą aplikacją CRUD. To system, który łączy:
 - ingestion dokumentów DOCX/PDF,
 - strukturę wiedzy podobną do `LearningUnits`,
 - generator kart pracy, kartkówek i sprawdzianów,
+- profile uczniów,
 - historię generowań,
 - bibliotekę zapisanych materiałów,
 - późniejszy semantic / hybrid search, shuffle i grupy A/B.
@@ -227,7 +228,7 @@ Globalna baza materiałów SmartTeacher.
 Cechy:
 
 - wspólna dla wielu nauczycieli,
-- nauczyciel może widzieć listę tematów,
+- nauczyciel może widzieć listę tematów i działów z danego przedmiotu,
 - nauczyciel nie musi widzieć treści bazy,
 - generator może używać tych treści zgodnie z planem subskrypcji,
 - `owner_id` dla tych danych jest `null` albo wskazuje konto administracyjne.
@@ -1032,6 +1033,12 @@ library = co nauczyciel zapisał do ponownego użycia
 | `created_at` | timestamptz |  |
 
 **Cel:** audyt limitów i rozliczeń.
+
+G. Udostępnianie materiałów dydaktycznych do bazy SmartTeacher
+→ sharing/licensing status, nie RODO jako główny problem
+
+H. Skale oceniania / WSO
+→ grading_policies / grading_scale_ranges
 
 ---
 

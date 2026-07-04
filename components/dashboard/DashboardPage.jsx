@@ -168,6 +168,32 @@ export default function DashboardPage() {
     setIsAdding(false);
   }
 
+  async function handleDeactivateSubject(teacherSubjectId) {
+  if (!user?.id) {
+    setErrorMessage("Nie znaleziono zalogowanego użytkownika.")
+    return
+  }
+
+  setErrorMessage("")
+  setMessage("")
+
+  const { error } = await supabase
+    .from("teacher_subjects")
+    .update({ is_active: false })
+    .eq("id", teacherSubjectId)
+    .eq("owner_id", user.id)
+
+  if (error) {
+    setErrorMessage("Nie udało się usunąć przedmiotu z panelu.")
+    console.error("Błąd dezaktywacji teacher_subjects:", error.message)
+    return
+  }
+
+  setMessage("Przedmiot został usunięty z Twojego panelu.")
+  await loadTeacherSubjects(user.id)
+}
+
+
   function handleOpenSubject(subjectKey) {
     router.push(`/generator?subject=${encodeURIComponent(subjectKey)}`);
   }
@@ -227,6 +253,7 @@ export default function DashboardPage() {
               if (!subject) return null;
 
               return (
+                /*
                 <button
                   key={item.id}
                   type="button"
@@ -241,6 +268,37 @@ export default function DashboardPage() {
                     {subject.subject_key}
                   </span>
                 </button>
+                */
+               <div
+  key={item.id}
+  className="rounded-xl border border-zinc-800 bg-zinc-900 p-6 text-zinc-300 transition-all duration-150 hover:border-zinc-700 hover:bg-zinc-800"
+>
+  <span className="block text-base font-semibold text-zinc-100">
+    {subject.name}
+  </span>
+
+  <span className="mt-2 block text-xs text-zinc-500">
+    {subject.subject_key}
+  </span>
+
+  <div className="mt-5 flex flex-wrap gap-2">
+    <button
+      type="button"
+      onClick={() => handleOpenSubject(subject.subject_key)}
+      className="rounded-md bg-indigo-600 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-indigo-500"
+    >
+      Otwórz
+    </button>
+
+    <button
+      type="button"
+      onClick={() => handleDeactivateSubject(item.id)}
+      className="rounded-md border border-red-900/60 px-3 py-2 text-sm font-medium text-red-300 transition-colors hover:bg-red-950/40 hover:text-red-200"
+    >
+      Usuń z panelu
+    </button>
+  </div>
+</div>
               );
             })}
           </div>

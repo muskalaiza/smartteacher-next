@@ -194,9 +194,10 @@ export default function DashboardPage() {
 }
 
 
-  function handleOpenSubject(subjectKey) {
-    router.push(`/generator?subject=${encodeURIComponent(subjectKey)}`);
-  }
+ function handleOpenSubject(subjectKey) {
+  router.push(`/przedmioty/${encodeURIComponent(subjectKey)}/generator`);
+}
+
 
   if (isLoading) {
     return (
@@ -253,22 +254,7 @@ export default function DashboardPage() {
               if (!subject) return null;
 
               return (
-                /*
-                <button
-                  key={item.id}
-                  type="button"
-                  onClick={() => handleOpenSubject(subject.subject_key)}
-                  className="group rounded-xl border border-zinc-800 bg-zinc-900 p-6 text-left text-zinc-300 transition-all duration-150 hover:border-zinc-700 hover:bg-zinc-800 hover:text-zinc-100"
-                >
-                  <span className="block text-base font-semibold">
-                    {subject.name}
-                  </span>
-
-                  <span className="mt-2 block text-xs text-zinc-500">
-                    {subject.subject_key}
-                  </span>
-                </button>
-                */
+               
                <div
   key={item.id}
   className="rounded-xl border border-zinc-800 bg-zinc-900 p-6 text-zinc-300 transition-all duration-150 hover:border-zinc-700 hover:bg-zinc-800"

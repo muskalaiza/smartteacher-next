@@ -81,7 +81,7 @@ export default function ChangePasswordForm({ handleChangePassword }) {
           type="password"
           required
           autoComplete="off"
-          placeholder="Minimum 8 znaków"
+          placeholder="Wpisz bezpieczne hasło"
           value={password}
           onChange={(event) => setPassword(event.target.value)}
           className="w-full rounded-md border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm text-zinc-200 transition-colors placeholder:text-zinc-600 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"

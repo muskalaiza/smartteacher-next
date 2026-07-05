@@ -1,13 +1,9 @@
-import Link from "next/link";
 
-const SUBJECT_LABELS = {
-  informatyka: "Informatyka",
-  programowanie_obiektowe: "Programowanie obiektowe",
-  aplikacje_mobilne: "Aplikacje mobilne",
-  aplikacje_desktopowe: "Aplikacje desktopowe",
-  bazy_danych: "Bazy danych",
-  aplikacje_internetowe: "Aplikacje internetowe",
-};
+"use client";
+
+import Link from "next/link";
+import { useParams } from "next/navigation";
+import { useActiveTeacherSubject } from "@/lib/subjects/useActiveTeacherSubject";
 
 const MATERIAL_TYPES = [
   {
@@ -35,18 +31,49 @@ const STUDENT_PROFILES = [
   "Uczeń obcojęzyczny",
 ];
 
-function getSubjectLabel(subjectKey) {
-  if (!subjectKey) {
-    return "Nie wybrano przedmiotu";
+export default function SubjectGeneratorPage() {
+  const params = useParams();
+  const subjectKey =
+    typeof params?.subjectKey === "string" ? params.subjectKey : "";
+
+  const { subject, isLoading, errorMessage } =
+    useActiveTeacherSubject(subjectKey);
+
+  if (isLoading) {
+    return (
+      <div className="space-y-3">
+        <h1 className="text-3xl font-bold tracking-tight text-zinc-50">
+          Ładowanie generatora...
+        </h1>
+        <p className="text-sm text-zinc-400">
+          Pobieramy przedmiot przypisany do Twojego konta.
+        </p>
+      </div>
+    );
   }
 
-  return SUBJECT_LABELS[subjectKey] || subjectKey.replaceAll("_", " ");
-}
+  if (errorMessage || !subject) {
+    return (
+      <div className="space-y-4">
+        <h1 className="text-3xl font-bold tracking-tight text-zinc-50">
+          Nie można otworzyć przedmiotu
+        </h1>
 
-export default async function SubjectGeneratorPage({ params }) {
-  const resolvedParams = await params;
-  const subjectKey = resolvedParams?.subjectKey;
-  const subjectLabel = getSubjectLabel(subjectKey);
+        <p className="text-sm text-zinc-400">
+          {errorMessage || "Nie znaleziono przedmiotu."}
+        </p>
+
+        <Link
+          href="/dashboard"
+          className="inline-flex items-center justify-center rounded-xl bg-sky-500 px-5 py-3 text-sm font-semibold text-white transition hover:bg-sky-400"
+        >
+          Wróć do wyboru przedmiotu
+        </Link>
+      </div>
+    );
+  }
+
+  const subjectLabel = subject.name;
 
   return (
     <div className="space-y-8">

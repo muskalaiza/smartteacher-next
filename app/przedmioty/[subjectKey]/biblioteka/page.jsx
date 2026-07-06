@@ -1,79 +1,66 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
+import { supabase } from "@/lib/supabaseClient";
 import { useActiveTeacherSubject } from "@/lib/subjects/useActiveTeacherSubject";
 
-const LIBRARY_STATS = [
-  {
-    label: "Materiały w bibliotece",
-    value: "18",
-    description: "zapisane do ponownego użycia",
-  },
-  {
-    label: "Najczęstszy dział",
-    value: "Programowanie",
-    description: "najwięcej zapisanych materiałów",
-  },
-  {
-    label: "Ostatnia aktualizacja",
-    value: "Dzisiaj",
-    description: "ostatnio dodany materiał",
-  },
-];
+function formatDate(value) {
+  if (!value) return "Brak daty";
 
-const COLLECTIONS = [
-  {
-    name: "Karty pracy",
-    count: "9 materiałów",
-    description: "Materiały do pracy z uczniami podczas lekcji.",
-  },
-  {
-    name: "Kartkówki",
-    count: "5 materiałów",
-    description: "Krótkie formy sprawdzające z jednego tematu.",
-  },
-  {
-    name: "Sprawdziany",
-    count: "4 materiały",
-    description: "Zestawy zadań z wybranego działu.",
-  },
-];
+  return new Intl.DateTimeFormat("pl-PL", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  }).format(new Date(value));
+}
 
-const MATERIALS = [
-  {
-    id: 1,
-    title: "Zmienne w Pythonie",
-    section: "Programowanie",
-    type: "Karta pracy",
-    profiles: ["Standard", "ADHD"],
-    updatedAt: "29.06.2026",
-  },
-  {
-    id: 2,
-    title: "Instrukcje warunkowe",
-    section: "Programowanie",
-    type: "Kartkówka",
-    profiles: ["Standard"],
-    updatedAt: "28.06.2026",
-  },
-  {
-    id: 3,
-    title: "System binarny",
-    section: "Algorytmika",
-    type: "Karta pracy",
-    profiles: ["Standard", "Dysleksja"],
-    updatedAt: "27.06.2026",
-  },
-  {
-    id: 4,
-    title: "Klasy i obiekty",
-    section: "Podstawy OOP",
-    type: "Sprawdzian",
-    profiles: ["Standard"],
-    updatedAt: "26.06.2026",
-  },
-];
+function formatFileSize(bytes) {
+  if (bytes === null || bytes === undefined) return "Brak danych";
+
+  if (bytes < 1024) {
+    return `${bytes} B`;
+  }
+
+  if (bytes < 1024 * 1024) {
+    return `${(bytes / 1024).toFixed(1)} KB`;
+  }
+
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function getDocumentKind(mimeType) {
+  if (
+    mimeType ===
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+  ) {
+    return "DOCX";
+  }
+
+  if (
+    mimeType === "text/csv" ||
+    mimeType === "application/csv" ||
+    mimeType === "text/plain"
+  ) {
+    return "CSV";
+  }
+
+  return "Plik";
+}
+
+function getStatusLabel(status) {
+  const labels = {
+    uploaded: "Wgrany",
+    extracted: "Wyodrębniony",
+    chunked: "Podzielony",
+    embedded: "Embeddingi",
+    ready: "Gotowy",
+    error: "Błąd",
+  };
+
+  return labels[status] || status || "Brak statusu";
+}
 
 export default function SubjectBibliotekaPage() {
   const params = useParams();
@@ -83,6 +70,98 @@ export default function SubjectBibliotekaPage() {
 
   const { subject, isLoading, errorMessage } =
     useActiveTeacherSubject(subjectKey);
+
+  const [documents, setDocuments] = useState([]);
+  const [documentsLoading, setDocumentsLoading] = useState(true);
+  const [documentsError, setDocumentsError] = useState("");
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadTeacherDocuments() {
+      setDocumentsLoading(true);
+      setDocumentsError("");
+
+      const { data: userData, error: userError } =
+        await supabase.auth.getUser();
+
+      if (!isMounted) return;
+
+      if (userError) {
+        setDocuments([]);
+        setDocumentsError(
+          "Nie udało się pobrać danych aktualnego użytkownika."
+        );
+        setDocumentsLoading(false);
+        return;
+      }
+
+      const userId = userData?.user?.id;
+
+      if (!userId) {
+        setDocuments([]);
+        setDocumentsError("Musisz być zalogowana, aby zobaczyć bibliotekę.");
+        setDocumentsLoading(false);
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from("teacher_documents")
+        .select(
+          "id, original_file_name, mime_type, file_size_bytes, status, storage_bucket, storage_path, created_at, updated_at"
+        )
+        .eq("owner_id", userId)
+        .order("created_at", { ascending: false });
+
+      if (!isMounted) return;
+
+if (error) {
+  setDocuments([]);
+  setDocumentsError("Nie udało się pobrać listy plików nauczyciela.");
+  setDocumentsLoading(false);
+  return;
+}
+
+      setDocuments(data || []);
+      setDocumentsLoading(false);
+    }
+
+    loadTeacherDocuments();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const stats = useMemo(() => {
+    const docxCount = documents.filter(
+      (document) => getDocumentKind(document.mime_type) === "DOCX"
+    ).length;
+
+    const csvCount = documents.filter(
+      (document) => getDocumentKind(document.mime_type) === "CSV"
+    ).length;
+
+    const latestDocument = documents[0];
+
+    return [
+      {
+        label: "Pliki źródłowe",
+        value: String(documents.length),
+        description: "własne materiały nauczyciela",
+      },
+      {
+        label: "DOCX / CSV",
+        value: `${docxCount} / ${csvCount}`,
+        description: "obsługiwane formaty pierwszego etapu",
+      },
+      {
+        label: "Ostatni upload",
+        value: latestDocument ? formatDate(latestDocument.created_at) : "Brak",
+        description: "ostatni plik w teacher_documents",
+      },
+    ];
+  }, [documents]);
 
   if (isLoading) {
     return (
@@ -120,10 +199,6 @@ export default function SubjectBibliotekaPage() {
 
   const subjectLabel = subject.name;
 
-  const generatorHref = `/przedmioty/${encodeURIComponent(
-    subject.subject_key
-  )}/generator`;
-
   return (
     <div className="space-y-8">
       <header className="space-y-4">
@@ -141,27 +216,29 @@ export default function SubjectBibliotekaPage() {
             </p>
 
             <h1 className="text-3xl font-bold tracking-tight text-zinc-50 md:text-4xl">
-              Biblioteka materiałów
+              Biblioteka materiałów źródłowych
             </h1>
 
             <p className="text-sm leading-6 text-zinc-400">
-              Organizuj zapisane karty pracy, kartkówki i sprawdziany dla
-              wybranego przedmiotu. Wracaj do gotowych materiałów, filtruj je
-              według działu i typu pracy.
+              To miejsce na prywatne materiały nauczyciela: pliki DOCX i CSV,
+              z których później Generator będzie mógł korzystać. Na tym etapie
+              pokazujemy tylko listę plików zapisanych w Supabase.
             </p>
           </div>
 
-          <Link
-            href={generatorHref}
-            className="inline-flex items-center justify-center rounded-xl bg-sky-500 px-5 py-3 text-sm font-semibold text-white transition hover:bg-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-500/30"
+          <button
+            type="button"
+            disabled
+            className="inline-flex cursor-not-allowed items-center justify-center rounded-xl bg-zinc-800 px-5 py-3 text-sm font-semibold text-zinc-400"
+            title="Upload podłączymy w następnym kroku"
           >
-            Utwórz nowy materiał
-          </Link>
+            Dodaj plik — następny krok
+          </button>
         </div>
       </header>
 
       <section className="grid gap-4 md:grid-cols-3">
-        {LIBRARY_STATS.map((stat) => (
+        {stats.map((stat) => (
           <div
             key={stat.label}
             className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-5 shadow-sm"
@@ -175,152 +252,108 @@ export default function SubjectBibliotekaPage() {
         ))}
       </section>
 
-      <section className="grid gap-4 lg:grid-cols-3">
-        {COLLECTIONS.map((collection) => (
-          <article
-            key={collection.name}
-            className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-5 shadow-sm transition hover:border-zinc-700 hover:bg-zinc-950"
-          >
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <h2 className="text-lg font-semibold text-zinc-50">
-                  {collection.name}
-                </h2>
-
-                <p className="mt-1 text-sm text-zinc-400">
-                  {collection.count}
-                </p>
-              </div>
-
-              <span className="rounded-full border border-sky-500/30 bg-sky-500/10 px-3 py-1 text-xs font-medium text-sky-200">
-                Folder
-              </span>
-            </div>
-
-            <p className="mt-4 text-sm leading-6 text-zinc-400">
-              {collection.description}
-            </p>
-          </article>
-        ))}
-      </section>
-
       <section className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-6 shadow-sm">
-        <div className="flex flex-col gap-4 border-b border-zinc-800 pb-6 lg:flex-row lg:items-end lg:justify-between">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-sky-400">
-              Zapisane materiały
-            </p>
+        <div className="border-b border-zinc-800 pb-6">
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-sky-400">
+            Pliki nauczyciela
+          </p>
 
-            <h2 className="mt-2 text-lg font-semibold text-zinc-50">
-              Ostatnio używane
-            </h2>
+          <h2 className="mt-2 text-lg font-semibold text-zinc-50">
+            Materiały źródłowe w Supabase
+          </h2>
 
-            <p className="mt-1 text-sm text-zinc-400">
-              Widok jest przygotowany wizualnie. Dane z bazy podłączymy
-              osobnym krokiem.
-            </p>
-          </div>
-
-          <div className="grid gap-3 sm:grid-cols-2 lg:w-[520px]">
-            <input
-              type="text"
-              placeholder="Szukaj materiału..."
-              className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-4 py-3 text-sm text-zinc-100 outline-none transition placeholder:text-zinc-500 focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20"
-            />
-
-            <select
-              defaultValue="all-types"
-              className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-4 py-3 text-sm text-zinc-100 outline-none transition focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20"
-            >
-              <option value="all-types">Wszystkie typy</option>
-              <option value="worksheet">Karta pracy</option>
-              <option value="quiz">Kartkówka</option>
-              <option value="test">Sprawdzian</option>
-            </select>
-          </div>
+          <p className="mt-1 text-sm text-zinc-400">
+            Lista pochodzi z tabeli teacher_documents. To nie jest jeszcze
+            biblioteka wygenerowanych kart pracy, kartkówek ani sprawdzianów.
+          </p>
         </div>
 
-        <div className="mt-6 grid gap-4">
-          {MATERIALS.map((material) => (
-            <article
-              key={material.id}
-              className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-5 transition hover:border-zinc-700 hover:bg-zinc-900"
-            >
-              <div className="flex flex-col gap-5 xl:flex-row xl:items-center xl:justify-between">
-                <div className="min-w-0 space-y-3">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="rounded-full border border-sky-500/30 bg-sky-500/10 px-3 py-1 text-xs font-medium text-sky-200">
-                      {material.type}
-                    </span>
+        {documentsLoading && (
+          <div className="mt-6 rounded-2xl border border-zinc-800 bg-zinc-900/60 p-5">
+            <p className="text-sm text-zinc-400">
+              Ładowanie plików źródłowych...
+            </p>
+          </div>
+        )}
 
-                    <span className="rounded-full border border-zinc-700 px-3 py-1 text-xs text-zinc-400">
-                      {subjectLabel}
-                    </span>
+        {!documentsLoading && documentsError && (
+          <div className="mt-6 rounded-2xl border border-red-500/30 bg-red-500/10 p-5">
+            <p className="text-sm text-red-200">{documentsError}</p>
+          </div>
+        )}
 
-                    <span className="rounded-full border border-zinc-700 px-3 py-1 text-xs text-zinc-400">
-                      {material.section}
-                    </span>
-                  </div>
+        {!documentsLoading && !documentsError && documents.length === 0 && (
+          <div className="mt-6 rounded-2xl border border-dashed border-zinc-700 bg-zinc-900/40 p-8 text-center">
+            <h3 className="text-lg font-semibold text-zinc-50">
+              Brak plików źródłowych
+            </h3>
 
-                  <div>
-                    <h3 className="text-lg font-semibold text-zinc-50">
-                      {material.title}
-                    </h3>
+            <p className="mx-auto mt-2 max-w-2xl text-sm leading-6 text-zinc-400">
+              W tabeli teacher_documents nie ma jeszcze plików przypisanych do
+              Twojego konta. W następnym kroku podłączymy upload DOCX i CSV do
+              prywatnego bucketa teacher-documents.
+            </p>
+          </div>
+        )}
 
-                    <p className="mt-1 text-sm text-zinc-400">
-                      Ostatnia aktualizacja: {material.updatedAt}
-                    </p>
-                  </div>
-
-                  <div className="flex flex-wrap gap-2">
-                    {material.profiles.map((profile) => (
-                      <span
-                        key={profile}
-                        className="rounded-lg bg-zinc-800 px-2.5 py-1 text-xs text-zinc-300"
-                      >
-                        {profile}
+        {!documentsLoading && !documentsError && documents.length > 0 && (
+          <div className="mt-6 grid gap-4">
+            {documents.map((document) => (
+              <article
+                key={document.id}
+                className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-5 transition hover:border-zinc-700 hover:bg-zinc-900"
+              >
+                <div className="flex flex-col gap-5 xl:flex-row xl:items-center xl:justify-between">
+                  <div className="min-w-0 space-y-3">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="rounded-full border border-sky-500/30 bg-sky-500/10 px-3 py-1 text-xs font-medium text-sky-200">
+                        {getDocumentKind(document.mime_type)}
                       </span>
-                    ))}
+
+                      <span className="rounded-full border border-zinc-700 px-3 py-1 text-xs text-zinc-400">
+                        {getStatusLabel(document.status)}
+                      </span>
+
+                      <span className="rounded-full border border-zinc-700 px-3 py-1 text-xs text-zinc-400">
+                        {formatFileSize(document.file_size_bytes)}
+                      </span>
+                    </div>
+
+                    <div>
+                      <h3 className="break-words text-lg font-semibold text-zinc-50">
+                        {document.original_file_name}
+                      </h3>
+
+                      <p className="mt-1 text-sm text-zinc-400">
+                        Dodano: {formatDate(document.created_at)}
+                      </p>
+
+                      <p className="mt-1 break-all text-xs text-zinc-500">
+                        {document.storage_bucket}/{document.storage_path}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="rounded-xl border border-zinc-800 bg-zinc-950/70 px-4 py-3 text-sm text-zinc-400 xl:w-[220px]">
+                    Podgląd, pobieranie i przypisanie do tematu dodamy w
+                    kolejnych krokach.
                   </div>
                 </div>
-
-                <div className="grid gap-2 sm:grid-cols-3 xl:w-[360px]">
-                  <button
-                    type="button"
-                    className="rounded-xl border border-zinc-700 px-4 py-2.5 text-sm font-medium text-zinc-200 transition hover:border-zinc-500 hover:bg-zinc-800"
-                  >
-                    Otwórz
-                  </button>
-
-                  <button
-                    type="button"
-                    className="rounded-xl border border-zinc-700 px-4 py-2.5 text-sm font-medium text-zinc-200 transition hover:border-zinc-500 hover:bg-zinc-800"
-                  >
-                    Duplikuj
-                  </button>
-
-                  <button
-                    type="button"
-                    className="rounded-xl border border-zinc-700 px-4 py-2.5 text-sm font-medium text-zinc-200 transition hover:border-zinc-500 hover:bg-zinc-800"
-                  >
-                    Pobierz
-                  </button>
-                </div>
-              </div>
-            </article>
-          ))}
-        </div>
+              </article>
+            ))}
+          </div>
+        )}
       </section>
 
       <section className="rounded-2xl border border-sky-500/20 bg-sky-500/10 p-6">
         <h2 className="text-sm font-semibold text-sky-100">
-          Docelowo w bibliotece
+          Zakres tego etapu
         </h2>
 
         <p className="mt-2 max-w-3xl text-sm leading-6 text-sky-100/80">
-          Biblioteka będzie miejscem pracy nauczyciela z gotowymi materiałami:
-          zapisywanie, wyszukiwanie, filtrowanie, ponowne użycie, duplikowanie
-          i pobieranie materiałów bez konieczności generowania ich od zera.
+          Budujemy minimalną bazę źródeł nauczyciela: upload plików, metadane i
+          lista dokumentów. Nie podłączamy jeszcze Generatora, ingestion,
+          embeddingów ani retrieval.
         </p>
       </section>
     </div>

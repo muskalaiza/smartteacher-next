@@ -3,6 +3,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
+import {
+  addOrReactivateTeacherSubject,
+  deactivateTeacherSubject,
+  getCurrentDashboardUser,
+  listActiveTeacherSubjects,
+  listAllActiveSubjects,
+} from "@/lib/teacherSubjects/teacherSubjectsApi";
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -17,72 +24,40 @@ export default function DashboardPage() {
   const [errorMessage, setErrorMessage] = useState("");
 
   useEffect(() => {
-    async function loadDashboard() {
-      setIsLoading(true);
-      setErrorMessage("");
-      setMessage("");
+  async function loadDashboard() {
+    setIsLoading(true);
+    setErrorMessage("");
+    setMessage("");
 
-      const { data: userData, error: userError } = await supabase.auth.getUser();
+    try {
+      const currentUser = await getCurrentDashboardUser(supabase);
 
-      if (userError || !userData?.user) {
+      setUser(currentUser);
+
+      const [teacherSubjectsData, allSubjectsData] = await Promise.all([
+        listActiveTeacherSubjects({
+          supabase,
+          userId: currentUser.id,
+        }),
+        listAllActiveSubjects(supabase),
+      ]);
+
+      setTeacherSubjects(teacherSubjectsData);
+      setAllSubjects(allSubjectsData);
+    } catch (error) {
+      if (error.message === "AUTH_REQUIRED") {
         router.push("/");
         return;
       }
 
-      setUser(userData.user);
-
-      await Promise.all([
-        loadTeacherSubjects(userData.user.id),
-        loadAllSubjects(),
-      ]);
-
+      setErrorMessage(error.message);
+    } finally {
       setIsLoading(false);
     }
-
-    loadDashboard();
-  }, [router]);
-
-  async function loadTeacherSubjects(userId) {
-    const { data, error } = await supabase
-      .from("teacher_subjects")
-      .select(`
-        id,
-        subject_id,
-        is_active,
-        subjects (
-          id,
-          subject_key,
-          name
-        )
-      `)
-      .eq("owner_id", userId)
-      .eq("is_active", true)
-      .order("created_at", { ascending: true });
-
-    if (error) {
-      setErrorMessage("Nie udało się pobrać Twoich przedmiotów.");
-      console.error("Błąd pobierania teacher_subjects:", error.message);
-      return;
-    }
-
-    setTeacherSubjects(data || []);
   }
 
-  async function loadAllSubjects() {
-    const { data, error } = await supabase
-      .from("subjects")
-      .select("id, subject_key, name")
-      .eq("is_active", true)
-      .order("name", { ascending: true });
-
-    if (error) {
-      setErrorMessage("Nie udało się pobrać katalogu przedmiotów.");
-      console.error("Błąd pobierania subjects:", error.message);
-      return;
-    }
-
-    setAllSubjects(data || []);
-  }
+  loadDashboard();
+}, [router]);
 
   const availableSubjects = useMemo(() => {
     const addedSubjectIds = new Set(
@@ -102,95 +77,55 @@ export default function DashboardPage() {
   return fullName.split(/\s+/)[0]
 }, [user])
 
+async function refreshTeacherSubjects(userId) {
+  const teacherSubjectsData = await listActiveTeacherSubjects({
+    supabase,
+    userId,
+  });
+
+  setTeacherSubjects(teacherSubjectsData);
+}
+
   async function handleAddSubject(event) {
-    event.preventDefault();
+  event.preventDefault();
 
-    if (!user?.id) {
-      setErrorMessage("Nie znaleziono zalogowanego użytkownika.");
-      return;
-    }
+  setIsAdding(true);
+  setErrorMessage("");
+  setMessage("");
 
-    if (!selectedSubjectId) {
-      setErrorMessage("Wybierz przedmiot z listy.");
-      return;
-    }
-
-    setIsAdding(true);
-    setErrorMessage("");
-    setMessage("");
-
-    const { data: existingSubject, error: existingError } = await supabase
-      .from("teacher_subjects")
-      .select("id, is_active")
-      .eq("owner_id", user.id)
-      .eq("subject_id", selectedSubjectId)
-      .maybeSingle();
-
-    if (existingError) {
-      setIsAdding(false);
-      setErrorMessage("Nie udało się sprawdzić, czy przedmiot już istnieje.");
-      console.error("Błąd sprawdzania teacher_subjects:", existingError.message);
-      return;
-    }
-
-    if (existingSubject) {
-      const { error: updateError } = await supabase
-        .from("teacher_subjects")
-        .update({ is_active: true })
-        .eq("id", existingSubject.id);
-
-      if (updateError) {
-        setIsAdding(false);
-        setErrorMessage("Nie udało się ponownie aktywować przedmiotu.");
-        console.error("Błąd aktualizacji teacher_subjects:", updateError.message);
-        return;
-      }
-    } else {
-      const { error: insertError } = await supabase
-        .from("teacher_subjects")
-        .insert({
-          owner_id: user.id,
-          subject_id: selectedSubjectId,
-          is_active: true,
-        });
-
-      if (insertError) {
-        setIsAdding(false);
-        setErrorMessage("Nie udało się dodać przedmiotu.");
-        console.error("Błąd dodawania teacher_subjects:", insertError.message);
-        return;
-      }
-    }
+  try {
+    await addOrReactivateTeacherSubject({
+      supabase,
+      userId: user?.id,
+      subjectId: selectedSubjectId,
+    });
 
     setSelectedSubjectId("");
     setMessage("Przedmiot został dodany do Twojego panelu.");
-    await loadTeacherSubjects(user.id);
+    await refreshTeacherSubjects(user.id);
+  } catch (error) {
+    setErrorMessage(error.message);
+  } finally {
     setIsAdding(false);
   }
+}
 
-  async function handleDeactivateSubject(teacherSubjectId) {
-  if (!user?.id) {
-    setErrorMessage("Nie znaleziono zalogowanego użytkownika.")
-    return
+async function handleDeactivateSubject(teacherSubjectId) {
+  setErrorMessage("");
+  setMessage("");
+
+  try {
+    await deactivateTeacherSubject({
+      supabase,
+      userId: user?.id,
+      teacherSubjectId,
+    });
+
+    setMessage("Przedmiot został usunięty z Twojego panelu.");
+    await refreshTeacherSubjects(user.id);
+  } catch (error) {
+    setErrorMessage(error.message);
   }
-
-  setErrorMessage("")
-  setMessage("")
-
-  const { error } = await supabase
-    .from("teacher_subjects")
-    .update({ is_active: false })
-    .eq("id", teacherSubjectId)
-    .eq("owner_id", user.id)
-
-  if (error) {
-    setErrorMessage("Nie udało się usunąć przedmiotu z panelu.")
-    console.error("Błąd dezaktywacji teacher_subjects:", error.message)
-    return
-  }
-
-  setMessage("Przedmiot został usunięty z Twojego panelu.")
-  await loadTeacherSubjects(user.id)
 }
 
 
@@ -218,6 +153,7 @@ export default function DashboardPage() {
        <h1 className="text-3xl font-bold text-zinc-100">
           Dzień dobry{teacherFirstName ? `, ${teacherFirstName}` : ""} 👋
       </h1>
+
 
         <p className="mt-2 text-zinc-400">
           Wybierz przedmiot, którego uczysz, albo dodaj nowy z katalogu.

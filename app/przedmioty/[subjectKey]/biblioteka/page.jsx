@@ -5,9 +5,14 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 import { useActiveTeacherSubject } from "@/lib/subjects/useActiveTeacherSubject";
+import {
+  deleteTeacherDocument,
+  getCurrentTeacherUserId,
+  getTeacherDocumentDownloadUrl,
+  listTeacherDocuments,
+  uploadTeacherDocument,
+} from "@/lib/teacherDocuments/teacherDocumentsApi";
 
-const TEACHER_DOCUMENTS_BUCKET = "teacher-documents";
-const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024;
 
 function formatDate(value) {
   if (!value) return "Brak daty";
@@ -65,36 +70,6 @@ function getStatusLabel(status) {
   return labels[status] || status || "Brak statusu";
 }
 
-function normalizeFileName(fileName) {
-  return fileName
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^a-zA-Z0-9._-]/g, "_")
-    .replace(/_+/g, "_")
-    .replace(/^_+|_+$/g, "");
-}
-
-function getAllowedFileMetadata(file) {
-  const lowerName = file.name.toLowerCase();
-
-  if (lowerName.endsWith(".docx")) {
-    return {
-      kind: "DOCX",
-      mimeType:
-        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-    };
-  }
-
-  if (lowerName.endsWith(".csv")) {
-    return {
-      kind: "CSV",
-      mimeType: "text/csv",
-    };
-  }
-
-  return null;
-}
-
 export default function SubjectBibliotekaPage() {
   const params = useParams();
 
@@ -122,156 +97,75 @@ export default function SubjectBibliotekaPage() {
     return;
   }
 
-    const { data: userData, error: userError } = await supabase.auth.getUser();
+  try {
+    const userId = await getCurrentTeacherUserId(supabase);
 
-    if (userError) {
-      setDocuments([]);
-      setDocumentsError("Nie udało się pobrać danych aktualnego użytkownika.");
-      setDocumentsLoading(false);
-      return;
-    }
+    const loadedDocuments = await listTeacherDocuments({
+      supabase,
+      userId,
+      subjectId: subject.id,
+    });
 
-    const userId = userData?.user?.id;
-
-    if (!userId) {
-      setDocuments([]);
-      setDocumentsError("Musisz być zalogowana, aby zobaczyć bibliotekę.");
-      setDocumentsLoading(false);
-      return;
-    }
-
-    const { data, error } = await supabase
-      .from("teacher_documents")
-    .select(
-  "id, subject_id, original_file_name, mime_type, file_size_bytes, status, storage_bucket, storage_path, created_at, updated_at"
-)
-      .eq("owner_id", userId)
-      .eq("subject_id", subject.id)
-      .order("created_at", { ascending: false });
-
-    if (error) {
-      setDocuments([]);
-      setDocumentsError("Nie udało się pobrać listy plików nauczyciela.");
-      setDocumentsLoading(false);
-      return;
-    }
-
-    setDocuments(data || []);
+    setDocuments(loadedDocuments);
+  } catch (error) {
+    setDocuments([]);
+    setDocumentsError(error.message);
+  } finally {
     setDocumentsLoading(false);
-  }, [subject?.id]);
+  }
+}, [subject?.id]);
 
   useEffect(() => {
     loadTeacherDocuments();
   }, [loadTeacherDocuments]);
 
   async function handleFileUpload(event) {
-    const file = event.target.files?.[0];
+  const file = event.target.files?.[0];
 
-    setUploadError("");
-    setUploadSuccess("");
-
-    if (!file) return;
-
-    if (!subject?.id) {
-  setUploadError("Nie udało się ustalić aktywnego przedmiotu.");
-  event.target.value = "";
-  return;
-}
-
-    const allowedFileMetadata = getAllowedFileMetadata(file);
-
-    if (!allowedFileMetadata) {
-      setUploadError("Obsługiwane są tylko pliki DOCX i CSV.");
-      event.target.value = "";
-      return;
-    }
-
-    if (file.size > MAX_FILE_SIZE_BYTES) {
-      setUploadError("Plik jest za duży. Maksymalny rozmiar to 10 MB.");
-      event.target.value = "";
-      return;
-    }
-
-    setUploading(true);
-
-    const { data: userData, error: userError } = await supabase.auth.getUser();
-
-    if (userError || !userData?.user?.id) {
-      setUploadError("Musisz być zalogowana, aby dodać plik.");
-      setUploading(false);
-      event.target.value = "";
-      return;
-    }
-
-    const userId = userData.user.id;
-    const safeFileName = normalizeFileName(file.name);
-    const storagePath = `${userId}/${Date.now()}-${safeFileName}`;
-
-    const { error: uploadErrorResult } = await supabase.storage
-      .from(TEACHER_DOCUMENTS_BUCKET)
-      .upload(storagePath, file, {
-        contentType: allowedFileMetadata.mimeType,
-        upsert: false,
-      });
-
-    if (uploadErrorResult) {
-      setUploadError(`Nie udało się wgrać pliku: ${uploadErrorResult.message}`);
-      setUploading(false);
-      event.target.value = "";
-      return;
-    }
-
-    const { error: insertError } = await supabase
-      .from("teacher_documents")
-      .insert({
-        owner_id: userId,
-        subject_id: subject.id,
-        lesson_topic_id: null,
-        source_type: "teacher_private",
-        storage_bucket: TEACHER_DOCUMENTS_BUCKET,
-        storage_path: storagePath,
-        original_file_name: file.name,
-        mime_type: allowedFileMetadata.mimeType,
-        file_size_bytes: file.size,
-        status: "uploaded",
-        error_message: null,
-      });
-
-    if (insertError) {
-      await supabase.storage
-        .from(TEACHER_DOCUMENTS_BUCKET)
-        .remove([storagePath]);
-
-      setUploadError(`Nie udało się zapisać metadanych pliku: ${insertError.message}`);
-      setUploading(false);
-      event.target.value = "";
-      return;
-    }
-
-    setUploadSuccess(
-      `${allowedFileMetadata.kind}: plik został wgrany i zapisany w teacher_documents.`
-    );
-
-    await loadTeacherDocuments();
-
-    setUploading(false);
-    event.target.value = "";
-  }
-
-  async function handleDownloadDocument(document) {
   setUploadError("");
   setUploadSuccess("");
 
-  const { data, error } = await supabase.storage
-    .from(TEACHER_DOCUMENTS_BUCKET)
-    .createSignedUrl(document.storage_path, 60);
+  if (!file) return;
 
-  if (error || !data?.signedUrl) {
-    setUploadError("Nie udało się przygotować linku do pobrania pliku.");
-    return;
+  setUploading(true);
+
+  try {
+    const userId = await getCurrentTeacherUserId(supabase);
+
+    const result = await uploadTeacherDocument({
+      supabase,
+      file,
+      userId,
+      subjectId: subject?.id,
+    });
+
+    setUploadSuccess(
+      `${result.kind}: plik został wgrany i zapisany w teacher_documents.`
+    );
+
+    await loadTeacherDocuments();
+  } catch (error) {
+    setUploadError(error.message);
+  } finally {
+    setUploading(false);
+    event.target.value = "";
   }
+}
 
-  window.open(data.signedUrl, "_blank", "noopener,noreferrer");
+ async function handleDownloadDocument(document) {
+  setUploadError("");
+  setUploadSuccess("");
+
+  try {
+    const signedUrl = await getTeacherDocumentDownloadUrl({
+      supabase,
+      storagePath: document.storage_path,
+    });
+
+    window.open(signedUrl, "_blank", "noopener,noreferrer");
+  } catch (error) {
+    setUploadError(error.message);
+  }
 }
 
 async function handleDeleteDocument(document) {
@@ -284,30 +178,18 @@ async function handleDeleteDocument(document) {
   setUploadError("");
   setUploadSuccess("");
 
-  const { error: storageError } = await supabase.storage
-    .from(TEACHER_DOCUMENTS_BUCKET)
-    .remove([document.storage_path]);
+  try {
+    await deleteTeacherDocument({
+      supabase,
+      document,
+      subjectId: subject?.id,
+    });
 
-  if (storageError) {
-    setUploadError(`Nie udało się usunąć pliku ze Storage: ${storageError.message}`);
-    return;
+    setUploadSuccess(`Usunięto plik: ${document.original_file_name}`);
+    await loadTeacherDocuments();
+  } catch (error) {
+    setUploadError(error.message);
   }
-
-  const { error: deleteError } = await supabase
-    .from("teacher_documents")
-    .delete()
-    .eq("id", document.id)
-    .eq("subject_id", subject.id);
-
-  if (deleteError) {
-    setUploadError(
-      `Plik usunięto ze Storage, ale nie udało się usunąć metadanych: ${deleteError.message}`
-    );
-    return;
-  }
-
-  setUploadSuccess(`Usunięto plik: ${document.original_file_name}`);
-  await loadTeacherDocuments();
 }
 
   const stats = useMemo(() => {

@@ -87,6 +87,10 @@ export default function SubjectBibliotekaPage() {
   const [uploadError, setUploadError] = useState("");
   const [uploadSuccess, setUploadSuccess] = useState("");
 
+  const [gradeLevels, setGradeLevels] = useState([]);
+  const [gradeLevelsLoading, setGradeLevelsLoading] = useState(true);
+  const [gradeLevelsError, setGradeLevelsError] = useState("");
+  const [selectedGradeLevelId, setSelectedGradeLevelId] = useState("");
 
   const loadTeacherDocuments = useCallback(async () => {
     setDocumentsLoading(true);
@@ -116,6 +120,33 @@ export default function SubjectBibliotekaPage() {
     }
   }, [subject?.id]);
 
+    const loadGradeLevels = useCallback(async () => {
+    setGradeLevelsLoading(true);
+    setGradeLevelsError("");
+
+    try {
+      const { data, error } = await supabase
+        .from("grade_levels")
+        .select("id, grade_key, label, order_index")
+        .order("order_index", { ascending: true });
+
+      if (error) {
+        throw new Error(error.message);
+      }
+
+      setGradeLevels(data || []);
+    } catch (error) {
+      setGradeLevels([]);
+      setGradeLevelsError(error.message);
+    } finally {
+      setGradeLevelsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadGradeLevels();
+  }, [loadGradeLevels]);
+
   useEffect(() => {
     loadTeacherDocuments();
   }, [loadTeacherDocuments]);
@@ -128,6 +159,18 @@ async function handleFileUpload(event) {
   setUploadSuccess("");
 
   if (!file) return;
+
+    const isCsvFile =
+    file.name.toLowerCase().endsWith(".csv") ||
+    file.type === "text/csv" ||
+    file.type === "application/csv" ||
+    file.type === "text/plain";
+
+  if (isCsvFile && !selectedGradeLevelId) {
+    setUploadError("Wybierz klasę przed dodaniem planu lekcji CSV.");
+    event.target.value = "";
+    return;
+  }
 
   setUploading(true);
 
@@ -147,13 +190,15 @@ async function handleFileUpload(event) {
           supabase,
           document: result.document,
           userId,
+          gradeLevelId: selectedGradeLevelId,
           subjectId: subject?.id,
           sourceSystem: "manual_csv",
         });
 
-        setUploadSuccess(
-          `Plan lekcji CSV został dodany. Odczytano ${importResult.rowCount} tematów lekcji.`
+                setUploadSuccess(
+          `Plan lekcji CSV został dodany. Odczytano ${importResult.rowCount} tematów lekcji i utworzono katalog: ${importResult.sectionCount} działów, ${importResult.topicCount} tematów.`
         );
+
       } catch (importError) {
         try {
           await deleteTeacherDocument({
@@ -461,25 +506,51 @@ async function handleFileUpload(event) {
                 </p>
               </div>
 
-              <label
-                className={`inline-flex items-center justify-center rounded-xl px-5 py-3 text-sm font-semibold transition ${
-  uploading
-    ? "cursor-not-allowed bg-zinc-800 text-zinc-400"
-    : "cursor-pointer bg-sky-500 text-white hover:bg-sky-400"
-}`}
-              >
-                {uploading ? "Wgrywanie..." : "Dodaj plan lekcji CSV"}
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                <select
+                  value={selectedGradeLevelId}
+                  onChange={(event) =>
+                    setSelectedGradeLevelId(event.target.value)
+                  }
+                  disabled={uploading || gradeLevelsLoading}
+                  className="min-w-[180px] rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-3 text-sm text-zinc-100 outline-none transition focus:border-sky-500 disabled:cursor-not-allowed disabled:bg-zinc-800 disabled:text-zinc-500"
+                >
+                  <option value="">
+                    {gradeLevelsLoading ? "Ładowanie klas..." : "Wybierz klasę"}
+                  </option>
 
-                <input
-                  type="file"
-                  className="hidden"
-                  accept=".csv,text/csv"
-                  disabled={uploading}
-                  onChange={handleFileUpload}
-                />
-              </label>
+                  {gradeLevels.map((gradeLevel) => (
+                    <option key={gradeLevel.id} value={gradeLevel.id}>
+                      {gradeLevel.label}
+                    </option>
+                  ))}
+                </select>
+
+                <label
+                  className={`inline-flex items-center justify-center rounded-xl px-5 py-3 text-sm font-semibold transition ${
+                    uploading || !selectedGradeLevelId
+                      ? "cursor-not-allowed bg-zinc-800 text-zinc-400"
+                      : "cursor-pointer bg-sky-500 text-white hover:bg-sky-400"
+                  }`}
+                >
+                  {uploading ? "Wgrywanie..." : "Dodaj plan lekcji CSV"}
+
+                  <input
+                    type="file"
+                    className="hidden"
+                    accept=".csv,text/csv"
+                    disabled={uploading || !selectedGradeLevelId}
+                    onChange={handleFileUpload}
+                  />
+                </label>
+              </div>
             </div>
-
+              {gradeLevelsError && (
+                <p className="text-sm text-red-300">
+                  Nie udało się pobrać listy klas: {gradeLevelsError}
+                </p>
+              )}
+              
             {lessonPlanDocuments.length === 0 ? (
               <div className="mt-6 rounded-2xl border border-dashed border-zinc-700 bg-zinc-900/40 p-8 text-center">
                 <h3 className="text-lg font-semibold text-zinc-50">

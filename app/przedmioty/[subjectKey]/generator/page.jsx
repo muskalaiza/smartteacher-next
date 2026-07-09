@@ -41,6 +41,24 @@ const STUDENT_PROFILES = [
   "Uczeń obcojęzyczny",
 ];
 
+const TASK_COUNT_OPTIONS = [
+  {
+    value: "5",
+    label: "5 zadań",
+    level: "podstawowy",
+  },
+  {
+    value: "6",
+    label: "6 zadań",
+    level: "średni",
+  },
+  {
+    value: "7",
+    label: "7 zadań",
+    level: "zaawansowany",
+  },
+];
+
 export default function SubjectGeneratorPage() {
   const params = useParams();
   const subjectKey =
@@ -70,6 +88,15 @@ export default function SubjectGeneratorPage() {
   const [topicsLoading, setTopicsLoading] = useState(false);
   const [topicsError, setTopicsError] = useState("");
   const [selectedLessonTopicId, setSelectedLessonTopicId] = useState("");
+
+  // stany formularza
+    const [selectedMaterialType, setSelectedMaterialType] =
+    useState(MATERIAL_TYPES[0].value);
+
+  const [selectedTaskCount, setSelectedTaskCount] = useState(
+    TASK_COUNT_OPTIONS[0].value
+  );
+
 
   useEffect(() => {
     let isMounted = true;
@@ -439,17 +466,19 @@ export default function SubjectGeneratorPage() {
                 </div>
 
                 <div className="grid gap-3">
-                  {MATERIAL_TYPES.map((type, index) => (
+                  {MATERIAL_TYPES.map((type) => (
                     <label
                       key={type.value}
                       className="flex cursor-pointer gap-3 rounded-xl border border-zinc-800 bg-zinc-900/60 p-4 transition hover:border-zinc-700 hover:bg-zinc-900"
                     >
                       <input
-                        type="radio"
-                        name="materialType"
-                        defaultChecked={index === 0}
-                        className="mt-1 h-4 w-4 accent-sky-500"
-                      />
+  type="radio"
+  name="materialType"
+  value={type.value}
+  checked={selectedMaterialType === type.value}
+  onChange={(event) => setSelectedMaterialType(event.target.value)}
+  className="mt-1 h-4 w-4 accent-sky-500"
+/>
 
                       <span className="space-y-1">
                         <span className="block text-sm font-semibold text-zinc-100">
@@ -475,22 +504,24 @@ export default function SubjectGeneratorPage() {
                 </div>
 
                 <div className="space-y-2">
-                  <label
-                    htmlFor="taskCount"
-                    className="text-sm font-semibold text-zinc-100"
-                  >
-                    Ilość zadań
-                  </label>
+                 
 
-                  <select
-                    id="taskCount"
-                    defaultValue="5"
-                    className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-4 py-3 text-sm text-zinc-100 outline-none transition focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20"
-                  >
-                    <option value="5">5 zadań</option>
-                    <option value="6">6 zadań</option>
-                    <option value="7">7 zadań</option>
-                  </select>
+                 <select
+  id="taskCount"
+  value={selectedTaskCount}
+  onChange={(event) => setSelectedTaskCount(event.target.value)}
+  className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-4 py-3 text-sm text-zinc-100 outline-none transition focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20"
+>
+  {TASK_COUNT_OPTIONS.map((option) => (
+    <option key={option.value} value={option.value}>
+      {option.label}
+    </option>
+  ))}
+</select>
+
+<p className="text-xs text-zinc-500">
+  Aplikacja automatycznie dobierze typy zadań do wybranej liczby.
+</p>
                 </div>
               </div>
             </div>

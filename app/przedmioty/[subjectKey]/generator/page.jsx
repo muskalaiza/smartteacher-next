@@ -1,8 +1,11 @@
 
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
+import { supabase } from "@/lib/supabaseClient";
+import { listGradeLevels } from "@/lib/lessonCatalogs/lessonCatalogsApi";
 import { useActiveTeacherSubject } from "@/lib/subjects/useActiveTeacherSubject";
 
 const MATERIAL_TYPES = [
@@ -38,6 +41,41 @@ export default function SubjectGeneratorPage() {
 
   const { subject, isLoading, errorMessage } =
     useActiveTeacherSubject(subjectKey);
+
+  const [gradeLevels, setGradeLevels] = useState([]);
+  const [gradeLevelsLoading, setGradeLevelsLoading] = useState(true);
+  const [gradeLevelsError, setGradeLevelsError] = useState("");
+  const [selectedGradeLevelId, setSelectedGradeLevelId] = useState("");
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadGradeLevels() {
+      try {
+        const loadedGradeLevels = await listGradeLevels({ supabase });
+
+        if (!isMounted) return;
+
+        setGradeLevels(loadedGradeLevels);
+        setGradeLevelsError("");
+      } catch (error) {
+        if (!isMounted) return;
+
+        setGradeLevels([]);
+        setGradeLevelsError(error.message);
+      } finally {
+        if (isMounted) {
+          setGradeLevelsLoading(false);
+        }
+      }
+    }
+
+    loadGradeLevels();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   if (isLoading) {
     return (
@@ -108,11 +146,48 @@ export default function SubjectGeneratorPage() {
                   Krok 1
                 </p>
                 <h2 className="mt-1 text-lg font-semibold text-zinc-50">
-                  Określ zakres materiału
+                  Wybierz klasę i zakres materiału
                 </h2>
               </div>
 
-              <div className="grid gap-4 md:grid-cols-2">
+              <div className="grid gap-4 md:grid-cols-3">
+                                <div className="space-y-2">
+                  <label
+                    htmlFor="gradeLevel"
+                    className="text-sm font-semibold text-zinc-100"
+                  >
+                    Klasa
+                  </label>
+
+                  <select
+                    id="gradeLevel"
+                    value={selectedGradeLevelId}
+                    onChange={(event) =>
+                      setSelectedGradeLevelId(event.target.value)
+                    }
+                    disabled={gradeLevelsLoading || gradeLevels.length === 0}
+                    className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-4 py-3 text-sm text-zinc-100 outline-none transition focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    <option value="" disabled>
+                      {gradeLevelsLoading ? "Ładowanie klas..." : "Wybierz klasę"}
+                    </option>
+
+                    {gradeLevels.map((gradeLevel) => (
+                      <option key={gradeLevel.id} value={gradeLevel.id}>
+                        {gradeLevel.label}
+                      </option>
+                    ))}
+                  </select>
+
+                  {gradeLevelsError ? (
+                    <p className="text-xs text-red-300">{gradeLevelsError}</p>
+                  ) : (
+                    <p className="text-xs text-zinc-500">
+                      Klasa określi prywatny katalog lekcji nauczyciela.
+                    </p>
+                  )}
+                </div>
+
                 <div className="space-y-2">
                   <label
                     htmlFor="section"

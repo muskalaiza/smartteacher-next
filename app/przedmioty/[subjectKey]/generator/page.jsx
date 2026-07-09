@@ -1,18 +1,9 @@
 
 "use client";
-
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { supabase } from "@/lib/supabaseClient";
-import {
-  getCurrentLessonCatalogUserId,
-  getPrivateLessonCatalogForGrade,
-  listGradeLevels,
-  listLessonTopics,
-  listLessonSections,
-} from "@/lib/lessonCatalogs/lessonCatalogsApi";
-
+import { useGeneratorLessonCatalog } from "@/lib/lessonCatalogs/useGeneratorLessonCatalog";
 import { useActiveTeacherSubject } from "@/lib/subjects/useActiveTeacherSubject";
 
 const MATERIAL_TYPES = [
@@ -67,27 +58,31 @@ export default function SubjectGeneratorPage() {
   const { subject, isLoading, errorMessage } =
     useActiveTeacherSubject(subjectKey);
 
-  // stany klas
-  const [gradeLevels, setGradeLevels] = useState([]);
-  const [gradeLevelsLoading, setGradeLevelsLoading] = useState(true);
-  const [gradeLevelsError, setGradeLevelsError] = useState("");
-  const [selectedGradeLevelId, setSelectedGradeLevelId] = useState("");
+  
 
   //stany dla działów
   const subjectId = subject?.id || "";
 
-  const [lessonSections, setLessonSections] = useState([]);
-  const [sectionsLoading, setSectionsLoading] = useState(false);
-  const [sectionsError, setSectionsError] = useState("");
-  const [selectedLessonSectionId, setSelectedLessonSectionId] = useState("");
+    const {
+    gradeLevels,
+    gradeLevelsLoading,
+    gradeLevelsError,
+    selectedGradeLevelId,
 
-  // stany tematów lekcji
+    lessonSections,
+    sectionsLoading,
+    sectionsError,
+    selectedLessonSectionId,
 
-  const [selectedLessonCatalogId, setSelectedLessonCatalogId] = useState("");
-  const [lessonTopics, setLessonTopics] = useState([]);
-  const [topicsLoading, setTopicsLoading] = useState(false);
-  const [topicsError, setTopicsError] = useState("");
-  const [selectedLessonTopicId, setSelectedLessonTopicId] = useState("");
+    lessonTopics,
+    topicsLoading,
+    topicsError,
+    selectedLessonTopicId,
+
+    handleGradeLevelChange,
+    handleLessonSectionChange,
+    handleLessonTopicChange,
+  } = useGeneratorLessonCatalog(subjectId);
 
   // stany formularza
     const [selectedMaterialType, setSelectedMaterialType] =
@@ -96,164 +91,6 @@ export default function SubjectGeneratorPage() {
   const [selectedTaskCount, setSelectedTaskCount] = useState(
     TASK_COUNT_OPTIONS[0].value
   );
-
-
-  useEffect(() => {
-    let isMounted = true;
-
-    async function loadGradeLevels() {
-      try {
-        const loadedGradeLevels = await listGradeLevels({ supabase });
-
-        if (!isMounted) return;
-
-        setGradeLevels(loadedGradeLevels);
-        setGradeLevelsError("");
-      } catch (error) {
-        if (!isMounted) return;
-
-        setGradeLevels([]);
-        setGradeLevelsError(error.message);
-      } finally {
-        if (isMounted) {
-          setGradeLevelsLoading(false);
-        }
-      }
-    }
-
-    loadGradeLevels();
-
-    return () => {
-      isMounted = false;
-    };
-  }, []);
-
-  //handler wyboru klasy
-
-  function handleGradeLevelChange(event) {
-    const gradeLevelId = event.target.value;
-
-    setSelectedGradeLevelId(gradeLevelId);
-    setSelectedLessonCatalogId("");
-    setSelectedLessonSectionId("");
-    setLessonSections([]);
-    setSectionsError("");
-    setSectionsLoading(Boolean(gradeLevelId && subjectId));
-    setSelectedLessonTopicId("");
-    setLessonTopics([]);
-    setTopicsError("");
-    setTopicsLoading(false);
-  }
-
-//handler wyboru działu
-
-    function handleLessonSectionChange(event) {
-    const lessonSectionId = event.target.value;
-
-    setSelectedLessonSectionId(lessonSectionId);
-    setSelectedLessonTopicId("");
-    setLessonTopics([]);
-    setTopicsError("");
-    setTopicsLoading(Boolean(lessonSectionId && selectedLessonCatalogId));
-  }
-    useEffect(() => {
-    let isMounted = true;
-
-    async function loadLessonSectionsForGrade() {
-      if (!selectedGradeLevelId || !subjectId) {
-        return;
-      }
-
-      try {
-        const userId = await getCurrentLessonCatalogUserId(supabase);
-
-        if (!isMounted) return;
-
-        const catalog = await getPrivateLessonCatalogForGrade({
-          supabase,
-          userId,
-          subjectId,
-          gradeLevelId: selectedGradeLevelId,
-        });
-
-        if (!isMounted) return;
-
-        if (!catalog) {
-          setSelectedLessonCatalogId("");
-          setLessonSections([]);
-          setSectionsError(
-            "Brak prywatnego katalogu lekcji dla wybranej klasy. Najpierw zaimportuj plan lekcji CSV w Bibliotece."
-          );
-          return;
-        }
-
-        setSelectedLessonCatalogId(catalog.id);
-
-        const loadedSections = await listLessonSections({
-          supabase,
-          catalogId: catalog.id,
-        });
-
-        if (!isMounted) return;
-
-        setLessonSections(loadedSections);
-        setSectionsError("");
-      } catch (error) {
-        if (!isMounted) return;
-
-        setLessonSections([]);
-        setSectionsError(error.message);
-      } finally {
-        if (isMounted) {
-          setSectionsLoading(false);
-        }
-      }
-    }
-
-    loadLessonSectionsForGrade();
-
-    return () => {
-      isMounted = false;
-    };
-  }, [selectedGradeLevelId, subjectId]);
-
-    useEffect(() => {
-    let isMounted = true;
-
-    async function loadLessonTopicsForSection() {
-      if (!selectedLessonCatalogId || !selectedLessonSectionId) {
-        return;
-      }
-
-      try {
-        const loadedTopics = await listLessonTopics({
-          supabase,
-          catalogId: selectedLessonCatalogId,
-          sectionId: selectedLessonSectionId,
-        });
-
-        if (!isMounted) return;
-
-        setLessonTopics(loadedTopics);
-        setTopicsError("");
-      } catch (error) {
-        if (!isMounted) return;
-
-        setLessonTopics([]);
-        setTopicsError(error.message);
-      } finally {
-        if (isMounted) {
-          setTopicsLoading(false);
-        }
-      }
-    }
-
-    loadLessonTopicsForSection();
-
-    return () => {
-      isMounted = false;
-    };
-  }, [selectedLessonCatalogId, selectedLessonSectionId]);
   
   if (isLoading) {
     return (
@@ -416,11 +253,9 @@ export default function SubjectGeneratorPage() {
                   </label>
 
                   <select
-                    id="lessonTopic"
-                    value={selectedLessonTopicId}
-                    onChange={(event) =>
-                      setSelectedLessonTopicId(event.target.value)
-                    }
+  id="lessonTopic"
+  value={selectedLessonTopicId}
+  onChange={handleLessonTopicChange}
                     disabled={
                       !selectedLessonSectionId ||
                       topicsLoading ||

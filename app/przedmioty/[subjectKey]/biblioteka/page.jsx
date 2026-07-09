@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+//import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 import { useActiveTeacherSubject } from "@/lib/subjects/useActiveTeacherSubject";
@@ -92,11 +93,13 @@ export default function SubjectBibliotekaPage() {
   const [gradeLevelsError, setGradeLevelsError] = useState("");
   const [selectedGradeLevelId, setSelectedGradeLevelId] = useState("");
 
-  const loadTeacherDocuments = useCallback(async () => {
+  const subjectId = subject?.id || "";
+
+  async function refreshTeacherDocuments() {
     setDocumentsLoading(true);
     setDocumentsError("");
 
-    if (!subject?.id) {
+    if (!subjectId) {
       setDocuments([]);
       setDocumentsLoading(false);
       return;
@@ -108,7 +111,7 @@ export default function SubjectBibliotekaPage() {
       const loadedDocuments = await listTeacherDocuments({
         supabase,
         userId,
-        subjectId: subject.id,
+        subjectId,
       });
 
       setDocuments(loadedDocuments);
@@ -118,39 +121,84 @@ export default function SubjectBibliotekaPage() {
     } finally {
       setDocumentsLoading(false);
     }
-  }, [subject?.id]);
+  }
 
-    const loadGradeLevels = useCallback(async () => {
-    setGradeLevelsLoading(true);
-    setGradeLevelsError("");
+  useEffect(() => {
+    let isMounted = true;
 
-    try {
-      const { data, error } = await supabase
-        .from("grade_levels")
-        .select("id, grade_key, label, order_index")
-        .order("order_index", { ascending: true });
+    async function loadGradeLevels() {
+      try {
+        const { data, error } = await supabase
+          .from("grade_levels")
+          .select("id, grade_key, label, order_index")
+          .order("order_index", { ascending: true });
 
-      if (error) {
-        throw new Error(error.message);
+        if (!isMounted) return;
+
+        if (error) {
+          throw new Error(error.message);
+        }
+
+        setGradeLevels(data || []);
+        setGradeLevelsError("");
+      } catch (error) {
+        if (!isMounted) return;
+
+        setGradeLevels([]);
+        setGradeLevelsError(error.message);
+      } finally {
+        if (isMounted) {
+          setGradeLevelsLoading(false);
+        }
       }
-
-      setGradeLevels(data || []);
-    } catch (error) {
-      setGradeLevels([]);
-      setGradeLevelsError(error.message);
-    } finally {
-      setGradeLevelsLoading(false);
     }
+
+    loadGradeLevels();
+
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   useEffect(() => {
-    loadGradeLevels();
-  }, [loadGradeLevels]);
+    let isMounted = true;
 
-  useEffect(() => {
+    async function loadTeacherDocuments() {
+      if (!subjectId) return;
+
+      try {
+        const userId = await getCurrentTeacherUserId(supabase);
+
+        if (!isMounted) return;
+
+        const loadedDocuments = await listTeacherDocuments({
+          supabase,
+          userId,
+          subjectId,
+        });
+
+        if (!isMounted) return;
+
+        setDocuments(loadedDocuments);
+        setDocumentsError("");
+      } catch (error) {
+        if (!isMounted) return;
+
+        setDocuments([]);
+        setDocumentsError(error.message);
+      } finally {
+        if (isMounted) {
+          setDocumentsLoading(false);
+        }
+      }
+    }
+
     loadTeacherDocuments();
-  }, [loadTeacherDocuments]);
 
+    return () => {
+      isMounted = false;
+    };
+  }, [subjectId]);
 
 async function handleFileUpload(event) {
   const file = event.target.files?.[0];
@@ -222,10 +270,10 @@ async function handleFileUpload(event) {
       );
     }
 
-    await loadTeacherDocuments();
+    await refreshTeacherDocuments();
   } catch (error) {
     setUploadError(error.message);
-    await loadTeacherDocuments();
+    await refreshTeacherDocuments();
   } finally {
     setUploading(false);
     event.target.value = "";
@@ -267,7 +315,7 @@ async function handleFileUpload(event) {
       });
 
       setUploadSuccess(`Usunięto plik: ${document.original_file_name}`);
-      await loadTeacherDocuments();
+      await refreshTeacherDocuments();
     } catch (error) {
       setUploadError(error.message);
     }

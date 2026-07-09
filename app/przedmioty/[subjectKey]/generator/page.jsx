@@ -5,7 +5,13 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
-import { listGradeLevels } from "@/lib/lessonCatalogs/lessonCatalogsApi";
+import {
+  getCurrentLessonCatalogUserId,
+  getPrivateLessonCatalogForGrade,
+  listGradeLevels,
+  listLessonSections,
+} from "@/lib/lessonCatalogs/lessonCatalogsApi";
+
 import { useActiveTeacherSubject } from "@/lib/subjects/useActiveTeacherSubject";
 
 const MATERIAL_TYPES = [
@@ -42,10 +48,19 @@ export default function SubjectGeneratorPage() {
   const { subject, isLoading, errorMessage } =
     useActiveTeacherSubject(subjectKey);
 
+  // stany klas
   const [gradeLevels, setGradeLevels] = useState([]);
   const [gradeLevelsLoading, setGradeLevelsLoading] = useState(true);
   const [gradeLevelsError, setGradeLevelsError] = useState("");
   const [selectedGradeLevelId, setSelectedGradeLevelId] = useState("");
+
+  //stany dla działów
+  const subjectId = subject?.id || "";
+
+  const [lessonSections, setLessonSections] = useState([]);
+  const [sectionsLoading, setSectionsLoading] = useState(false);
+  const [sectionsError, setSectionsError] = useState("");
+  const [selectedLessonSectionId, setSelectedLessonSectionId] = useState("");
 
   useEffect(() => {
     let isMounted = true;
@@ -77,6 +92,75 @@ export default function SubjectGeneratorPage() {
     };
   }, []);
 
+  //handler wyboru klasy
+
+  function handleGradeLevelChange(event) {
+    const gradeLevelId = event.target.value;
+
+    setSelectedGradeLevelId(gradeLevelId);
+    setSelectedLessonSectionId("");
+    setLessonSections([]);
+    setSectionsError("");
+    setSectionsLoading(Boolean(gradeLevelId && subjectId));
+  }
+    useEffect(() => {
+    let isMounted = true;
+
+    async function loadLessonSectionsForGrade() {
+      if (!selectedGradeLevelId || !subjectId) {
+        return;
+      }
+
+      try {
+        const userId = await getCurrentLessonCatalogUserId(supabase);
+
+        if (!isMounted) return;
+
+        const catalog = await getPrivateLessonCatalogForGrade({
+          supabase,
+          userId,
+          subjectId,
+          gradeLevelId: selectedGradeLevelId,
+        });
+
+        if (!isMounted) return;
+
+        if (!catalog) {
+          setLessonSections([]);
+          setSectionsError(
+            "Brak prywatnego katalogu lekcji dla wybranej klasy. Najpierw zaimportuj plan lekcji CSV w Bibliotece."
+          );
+          return;
+        }
+
+        const loadedSections = await listLessonSections({
+          supabase,
+          catalogId: catalog.id,
+        });
+
+        if (!isMounted) return;
+
+        setLessonSections(loadedSections);
+        setSectionsError("");
+      } catch (error) {
+        if (!isMounted) return;
+
+        setLessonSections([]);
+        setSectionsError(error.message);
+      } finally {
+        if (isMounted) {
+          setSectionsLoading(false);
+        }
+      }
+    }
+
+    loadLessonSectionsForGrade();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [selectedGradeLevelId, subjectId]);
+  
   if (isLoading) {
     return (
       <div className="space-y-3">
@@ -162,9 +246,7 @@ export default function SubjectGeneratorPage() {
                   <select
                     id="gradeLevel"
                     value={selectedGradeLevelId}
-                    onChange={(event) =>
-                      setSelectedGradeLevelId(event.target.value)
-                    }
+                    onChange={handleGradeLevelChange}
                     disabled={gradeLevelsLoading || gradeLevels.length === 0}
                     className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-4 py-3 text-sm text-zinc-100 outline-none transition focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20 disabled:cursor-not-allowed disabled:opacity-60"
                   >
@@ -188,30 +270,51 @@ export default function SubjectGeneratorPage() {
                   )}
                 </div>
 
-                <div className="space-y-2">
+                               <div className="space-y-2">
                   <label
-                    htmlFor="section"
+                    htmlFor="lessonSection"
                     className="text-sm font-semibold text-zinc-100"
                   >
                     Dział
                   </label>
 
                   <select
-                    id="section"
-                    defaultValue=""
-                    className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-4 py-3 text-sm text-zinc-100 outline-none transition focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20"
+                    id="lessonSection"
+                    value={selectedLessonSectionId}
+                    onChange={(event) =>
+                      setSelectedLessonSectionId(event.target.value)
+                    }
+                    disabled={
+                      !selectedGradeLevelId ||
+                      sectionsLoading ||
+                      lessonSections.length === 0
+                    }
+                    className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-4 py-3 text-sm text-zinc-100 outline-none transition focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20 disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     <option value="" disabled>
-                      Wybierz dział
+                      {!selectedGradeLevelId
+                        ? "Najpierw wybierz klasę"
+                        : sectionsLoading
+                          ? "Ładowanie działów..."
+                          : "Wybierz dział"}
                     </option>
-                    <option value="algorytmika">Algorytmika</option>
-                    <option value="programowanie">Programowanie</option>
+
+                    {lessonSections.map((section) => (
+                      <option key={section.id} value={section.id}>
+                        {section.display_name}
+                      </option>
+                    ))}
                   </select>
 
-                  <p className="text-xs text-zinc-500">
-                    Dział określa główny zakres materiału, np. dla sprawdzianu.
-                  </p>
+                  {sectionsError ? (
+                    <p className="text-xs text-red-300">{sectionsError}</p>
+                  ) : (
+                    <p className="text-xs text-zinc-500">
+                      Działy pochodzą z prywatnego katalogu lekcji utworzonego z CSV.
+                    </p>
+                  )}
                 </div>
+          
 
                 <div className="space-y-2">
                   <label

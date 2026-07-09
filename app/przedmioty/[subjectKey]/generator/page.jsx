@@ -9,6 +9,7 @@ import {
   getCurrentLessonCatalogUserId,
   getPrivateLessonCatalogForGrade,
   listGradeLevels,
+  listLessonTopics,
   listLessonSections,
 } from "@/lib/lessonCatalogs/lessonCatalogsApi";
 
@@ -62,6 +63,14 @@ export default function SubjectGeneratorPage() {
   const [sectionsError, setSectionsError] = useState("");
   const [selectedLessonSectionId, setSelectedLessonSectionId] = useState("");
 
+  // stany tematów lekcji
+
+  const [selectedLessonCatalogId, setSelectedLessonCatalogId] = useState("");
+  const [lessonTopics, setLessonTopics] = useState([]);
+  const [topicsLoading, setTopicsLoading] = useState(false);
+  const [topicsError, setTopicsError] = useState("");
+  const [selectedLessonTopicId, setSelectedLessonTopicId] = useState("");
+
   useEffect(() => {
     let isMounted = true;
 
@@ -98,10 +107,27 @@ export default function SubjectGeneratorPage() {
     const gradeLevelId = event.target.value;
 
     setSelectedGradeLevelId(gradeLevelId);
+    setSelectedLessonCatalogId("");
     setSelectedLessonSectionId("");
     setLessonSections([]);
     setSectionsError("");
     setSectionsLoading(Boolean(gradeLevelId && subjectId));
+    setSelectedLessonTopicId("");
+    setLessonTopics([]);
+    setTopicsError("");
+    setTopicsLoading(false);
+  }
+
+//handler wyboru działu
+
+    function handleLessonSectionChange(event) {
+    const lessonSectionId = event.target.value;
+
+    setSelectedLessonSectionId(lessonSectionId);
+    setSelectedLessonTopicId("");
+    setLessonTopics([]);
+    setTopicsError("");
+    setTopicsLoading(Boolean(lessonSectionId && selectedLessonCatalogId));
   }
     useEffect(() => {
     let isMounted = true;
@@ -126,12 +152,15 @@ export default function SubjectGeneratorPage() {
         if (!isMounted) return;
 
         if (!catalog) {
+          setSelectedLessonCatalogId("");
           setLessonSections([]);
           setSectionsError(
             "Brak prywatnego katalogu lekcji dla wybranej klasy. Najpierw zaimportuj plan lekcji CSV w Bibliotece."
           );
           return;
         }
+
+        setSelectedLessonCatalogId(catalog.id);
 
         const loadedSections = await listLessonSections({
           supabase,
@@ -160,6 +189,44 @@ export default function SubjectGeneratorPage() {
       isMounted = false;
     };
   }, [selectedGradeLevelId, subjectId]);
+
+    useEffect(() => {
+    let isMounted = true;
+
+    async function loadLessonTopicsForSection() {
+      if (!selectedLessonCatalogId || !selectedLessonSectionId) {
+        return;
+      }
+
+      try {
+        const loadedTopics = await listLessonTopics({
+          supabase,
+          catalogId: selectedLessonCatalogId,
+          sectionId: selectedLessonSectionId,
+        });
+
+        if (!isMounted) return;
+
+        setLessonTopics(loadedTopics);
+        setTopicsError("");
+      } catch (error) {
+        if (!isMounted) return;
+
+        setLessonTopics([]);
+        setTopicsError(error.message);
+      } finally {
+        if (isMounted) {
+          setTopicsLoading(false);
+        }
+      }
+    }
+
+    loadLessonTopicsForSection();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [selectedLessonCatalogId, selectedLessonSectionId]);
   
   if (isLoading) {
     return (
@@ -270,7 +337,7 @@ export default function SubjectGeneratorPage() {
                   )}
                 </div>
 
-                               <div className="space-y-2">
+                <div className="space-y-2">
                   <label
                     htmlFor="lessonSection"
                     className="text-sm font-semibold text-zinc-100"
@@ -281,9 +348,7 @@ export default function SubjectGeneratorPage() {
                   <select
                     id="lessonSection"
                     value={selectedLessonSectionId}
-                    onChange={(event) =>
-                      setSelectedLessonSectionId(event.target.value)
-                    }
+                    onChange={handleLessonSectionChange}
                     disabled={
                       !selectedGradeLevelId ||
                       sectionsLoading ||
@@ -315,49 +380,49 @@ export default function SubjectGeneratorPage() {
                   )}
                 </div>
           
-
                 <div className="space-y-2">
                   <label
-                    htmlFor="subtopic"
+                    htmlFor="lessonTopic"
                     className="text-sm font-semibold text-zinc-100"
                   >
                     Temat lekcji
                   </label>
 
                   <select
-                    id="subtopic"
-                    defaultValue=""
-                    className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-4 py-3 text-sm text-zinc-100 outline-none transition focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20"
+                    id="lessonTopic"
+                    value={selectedLessonTopicId}
+                    onChange={(event) =>
+                      setSelectedLessonTopicId(event.target.value)
+                    }
+                    disabled={
+                      !selectedLessonSectionId ||
+                      topicsLoading ||
+                      lessonTopics.length === 0
+                    }
+                    className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-4 py-3 text-sm text-zinc-100 outline-none transition focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20 disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     <option value="" disabled>
-                      Wybierz temat lekcji
+                      {!selectedLessonSectionId
+                        ? "Najpierw wybierz dział"
+                        : topicsLoading
+                          ? "Ładowanie tematów..."
+                          : "Wybierz temat lekcji"}
                     </option>
-                    <option value="prog_zmienne">Zmienne</option>
-                    <option value="prog_typy_danych">Typy danych</option>
-                    <option value="prog_warunki">Instrukcje warunkowe</option>
-                    <option value="prog_petla_for">Pętla for</option>
-                    <option value="prog_petla_while">Pętla while</option>
-                    <option value="prog_funkcje">Funkcje</option>
-                    <option value="prog_tablice">Tablice</option>
-                    <option value="alg_systemy_pozycyjne">Systemy pozycyjne</option>
-                    <option value="alg_system_binarny">System binarny</option>
-                    <option value="alg_konwersja_bin_dec">
-                      Konwersja binarna na dziesiętną
-                    </option>
-                    <option value="alg_konwersja_dec_bin">
-                      Konwersja dziesiętna na binarną
-                    </option>
-                    <option value="alg_reprezentacja_algorytmow">
-                      Reprezentacja algorytmów
-                    </option>
-                    <option value="alg_lista_krokow">Lista kroków</option>
-                    <option value="alg_schemat_blokowy">Schemat blokowy</option>
-                    <option value="alg_pseudokod">Pseudokod</option>
+
+                    {lessonTopics.map((topic) => (
+                      <option key={topic.id} value={topic.id}>
+                        {topic.display_title}
+                      </option>
+                    ))}
                   </select>
 
-                  <p className="text-xs text-zinc-500">
-                    Temat lekcji będzie wymagany dla karty pracy i kartkówki.
-                  </p>
+                  {topicsError ? (
+                    <p className="text-xs text-red-300">{topicsError}</p>
+                  ) : (
+                    <p className="text-xs text-zinc-500">
+                      Tematy pochodzą z prywatnego katalogu lekcji nauczyciela.
+                    </p>
+                  )}
                 </div>
               </div>
             </div>

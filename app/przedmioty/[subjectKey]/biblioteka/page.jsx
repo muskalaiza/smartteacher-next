@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-//import { useCallback, useEffect, useMemo, useState } from "react";
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
@@ -14,6 +13,7 @@ import {
   uploadTeacherDocument,
 } from "@/lib/teacherDocuments/teacherDocumentsApi";
 import { importLessonPlanCsvFromDocument } from "@/lib/lessonPlanImports/lessonPlanImportsApi";
+import { extractTeacherDocumentBlocks } from "@/lib/privateRag/privateRagApi";
 
 function formatDate(value) {
   if (!value) return "Brak daty";
@@ -264,9 +264,15 @@ async function handleFileUpload(event) {
           `Plan lekcji CSV nie został dodany: ${importError.message}`
         );
       }
-    } else {
+       } else {
+      const ingestionResult =
+        await extractTeacherDocumentBlocks({
+          supabase,
+          documentId: result.document.id,
+        });
+
       setUploadSuccess(
-        "Opracowanie DOCX zostało dodane do Twoich opracowanych lekcji."
+        `Opracowanie DOCX zostało dodane i wyodrębnione do ${ingestionResult.blockCount} bloków źródłowych.`
       );
     }
 

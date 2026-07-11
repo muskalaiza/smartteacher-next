@@ -3,6 +3,7 @@ import { NextResponse } from "next/server"
 
 import { ingestTeacherDocumentBlocks } from "@/lib/privateRag/ingestTeacherDocumentBlocks"
 import { ingestTeacherDocumentChunks } from "@/lib/privateRag/ingestTeacherDocumentChunks"
+import { ingestTeacherDocumentEmbeddings } from "@/lib/privateRag/ingestTeacherDocumentEmbeddings"
 
 export const runtime = "nodejs"
 
@@ -179,7 +180,8 @@ export async function POST(request) {
     */
     const supabaseAdmin = createAdminClient()
 
-    const extractionResult =
+
+const extractionResult =
   await ingestTeacherDocumentBlocks({
     supabaseAdmin,
     documentId,
@@ -193,24 +195,54 @@ const chunkingResult =
     ownerId: user.id,
   })
 
+const embeddingResult =
+  await ingestTeacherDocumentEmbeddings({
+    supabaseAdmin,
+    documentId,
+    ownerId: user.id,
+  })
+
 return jsonResponse({
   success: true,
   ingestion: {
     ...extractionResult,
     ...chunkingResult,
+    ...embeddingResult,
 
     /*
-      Zachowujemy oba wyniki diagnostyczne.
-      Status końcowy pochodzi z chunkingu: "chunked".
+      Zachowujemy jawne wartości z każdego etapu,
+      aby komunikat UI i diagnostyka nie zależały
+      od kolejności spreadów obiektów.
     */
-    blockCount: extractionResult.blockCount,
-    chunkCount: chunkingResult.chunkCount,
+    blockCount:
+      extractionResult.blockCount,
+
+    sourceBlockCount:
+      chunkingResult.sourceBlockCount,
+
+    chunkCount:
+      chunkingResult.chunkCount,
+
+    embeddingCount:
+      embeddingResult.embeddingCount,
 
     reusedExistingBlocks:
       extractionResult.reusedExistingBlocks,
 
     reusedExistingChunks:
       chunkingResult.reusedExistingChunks,
+
+    generatedEmbeddingCount:
+      embeddingResult.generatedEmbeddingCount,
+
+    reusedEmbeddingCount:
+      embeddingResult.reusedEmbeddingCount,
+
+    /*
+      Końcowym statusem całego obecnego pipeline jest embedded.
+    */
+    status:
+      embeddingResult.status,
   },
 })
 

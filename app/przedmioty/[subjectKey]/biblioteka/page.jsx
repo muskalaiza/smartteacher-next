@@ -271,8 +271,8 @@ async function handleFileUpload(event) {
           documentId: result.document.id,
         });
 
-      setUploadSuccess(
-  `Opracowanie DOCX zostało dodane i przetworzone: ${ingestionResult.blockCount} bloków źródłowych i ${ingestionResult.chunkCount} chunków.`
+     setUploadSuccess(
+  `Opracowanie DOCX zostało dodane i przetworzone: ${ingestionResult.blockCount} bloków źródłowych, ${ingestionResult.chunkCount} chunków i ${ingestionResult.embeddingCount} embeddingów.`
 );
     }
 

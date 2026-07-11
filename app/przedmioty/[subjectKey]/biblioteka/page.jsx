@@ -272,8 +272,8 @@ async function handleFileUpload(event) {
         });
 
       setUploadSuccess(
-        `Opracowanie DOCX zostało dodane i wyodrębnione do ${ingestionResult.blockCount} bloków źródłowych.`
-      );
+  `Opracowanie DOCX zostało dodane i przetworzone: ${ingestionResult.blockCount} bloków źródłowych i ${ingestionResult.chunkCount} chunków.`
+);
     }
 
     await refreshTeacherDocuments();

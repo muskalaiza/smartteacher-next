@@ -2,6 +2,7 @@ import { createClient } from "@supabase/supabase-js"
 import { NextResponse } from "next/server"
 
 import { ingestTeacherDocumentBlocks } from "@/lib/privateRag/ingestTeacherDocumentBlocks"
+import { ingestTeacherDocumentChunks } from "@/lib/privateRag/ingestTeacherDocumentChunks"
 
 export const runtime = "nodejs"
 
@@ -178,16 +179,41 @@ export async function POST(request) {
     */
     const supabaseAdmin = createAdminClient()
 
-    const result = await ingestTeacherDocumentBlocks({
-      supabaseAdmin,
-      documentId,
-      ownerId: user.id,
-    })
+    const extractionResult =
+  await ingestTeacherDocumentBlocks({
+    supabaseAdmin,
+    documentId,
+    ownerId: user.id,
+  })
 
-    return jsonResponse({
-      success: true,
-      ingestion: result,
-    })
+const chunkingResult =
+  await ingestTeacherDocumentChunks({
+    supabaseAdmin,
+    documentId,
+    ownerId: user.id,
+  })
+
+return jsonResponse({
+  success: true,
+  ingestion: {
+    ...extractionResult,
+    ...chunkingResult,
+
+    /*
+      Zachowujemy oba wyniki diagnostyczne.
+      Status końcowy pochodzi z chunkingu: "chunked".
+    */
+    blockCount: extractionResult.blockCount,
+    chunkCount: chunkingResult.chunkCount,
+
+    reusedExistingBlocks:
+      extractionResult.reusedExistingBlocks,
+
+    reusedExistingChunks:
+      chunkingResult.reusedExistingChunks,
+  },
+})
+
   } catch (error) {
     const errorMessage = getErrorMessage(error)
 

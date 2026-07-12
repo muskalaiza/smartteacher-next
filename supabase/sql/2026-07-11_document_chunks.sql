@@ -153,6 +153,24 @@ on public.document_chunks (
 -- 4. RLS i uprawnienia
 -- -----------------------------------------------------------------------------
 
+alter table public.document_chunks
+enable row level security;
+
+-- Nauczyciel może odczytać wyłącznie własne chunki.
+
+drop policy if exists
+document_chunks_select_own
+on public.document_chunks;
+
+create policy
+document_chunks_select_own
+on public.document_chunks
+for select
+to authenticated
+using (
+  (select auth.uid()) = owner_id
+);
+
 -- Najpierw usuwamy wszystkie istniejące uprawnienia,
 -- również te wynikające z domyślnej konfiguracji schematu public.
 
@@ -166,13 +184,6 @@ from anon, authenticated, service_role;
 grant select
 on table public.document_chunks
 to authenticated;
-
--- Serwerowy ingestion może sprawdzić istniejące
--- chunki i zapisać nowe.
-
-grant select, insert
-on table public.document_chunks
-to service_role;
 
 -- Serwerowy ingestion:
 -- - sprawdza istniejące chunki,

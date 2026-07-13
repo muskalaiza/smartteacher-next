@@ -271,9 +271,21 @@ async function handleFileUpload(event) {
           documentId: result.document.id,
         });
 
-     setUploadSuccess(
-  `Opracowanie DOCX zostało dodane i przetworzone: ${ingestionResult.blockCount} bloków źródłowych, ${ingestionResult.chunkCount} chunków i ${ingestionResult.embeddingCount} embeddingów.`
-);
+     const lessonTopicAssignment =
+  ingestionResult.lessonTopicAssignment
+
+if (
+  lessonTopicAssignment?.status === "matched" &&
+  lessonTopicAssignment.lessonTopicTitle
+) {
+  setUploadSuccess(
+    `Materiał został dodany i przypisany do tematu „${lessonTopicAssignment.lessonTopicTitle}”.`
+  )
+} else {
+  setUploadSuccess(
+    "Materiał został dodany, ale nie został przypisany do tematu lekcji."
+  )
+}
     }
 
     await refreshTeacherDocuments();

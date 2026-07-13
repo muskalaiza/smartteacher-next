@@ -4,6 +4,7 @@ import { NextResponse } from "next/server"
 import { ingestTeacherDocumentBlocks } from "@/lib/privateRag/ingestTeacherDocumentBlocks"
 import { ingestTeacherDocumentChunks } from "@/lib/privateRag/ingestTeacherDocumentChunks"
 import { ingestTeacherDocumentEmbeddings } from "@/lib/privateRag/ingestTeacherDocumentEmbeddings"
+import { assignTeacherDocumentLessonTopic } from "@/lib/privateRag/assignTeacherDocumentLessonTopic"
 
 export const runtime = "nodejs"
 
@@ -188,6 +189,13 @@ const extractionResult =
     ownerId: user.id,
   })
 
+  const lessonTopicAssignmentResult =
+  await assignTeacherDocumentLessonTopic({
+    supabaseAdmin,
+    documentId,
+    ownerId: user.id,
+  })
+
 const chunkingResult =
   await ingestTeacherDocumentChunks({
     supabaseAdmin,
@@ -225,6 +233,39 @@ return jsonResponse({
 
     embeddingCount:
       embeddingResult.embeddingCount,
+
+      lessonTopicAssignment: {
+  status:
+    lessonTopicAssignmentResult.status,
+
+  assignmentCreated:
+    lessonTopicAssignmentResult.assignmentCreated,
+
+  reusedExistingAssignment:
+    lessonTopicAssignmentResult.reusedExistingAssignment,
+
+  reason:
+    lessonTopicAssignmentResult.reason || null,
+  candidateTitle:
+    lessonTopicAssignmentResult.candidateTitle || null,
+
+  candidateSource:
+    lessonTopicAssignmentResult.candidateSource || null,
+
+  matchType:
+    lessonTopicAssignmentResult.matchType || null,
+
+  lessonTopicId:
+    lessonTopicAssignmentResult.lessonTopicId || null,
+
+  lessonTopicTitle:
+    lessonTopicAssignmentResult.lessonTopicTitle || null,
+
+  lessonKey:
+    lessonTopicAssignmentResult.lessonKey || null,
+candidates:
+    lessonTopicAssignmentResult.candidates || [],
+},
 
     reusedExistingBlocks:
       extractionResult.reusedExistingBlocks,

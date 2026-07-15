@@ -289,6 +289,9 @@ async function main() {
           `chunk ${source.chunkIndex}`,
           `similarity ${source.similarity.toFixed(6)}`,
           `[${source.chunkId}]`,
+           getChunkPreview(
+          source.content
+        ),
         ].join(" | ")
       )
     }

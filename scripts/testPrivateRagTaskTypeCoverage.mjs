@@ -10,11 +10,22 @@ import {
   PRIVATE_RAG_TASK_SUBTYPES,
 } from "../lib/privateRag/assessPrivateRagTaskTypeCoverage.js"
 
+import {
+  buildPrivateRagContext,
+} from "../lib/privateRag/buildPrivateRagContext.js"
+
+import {
+  searchPrivateLessonTopicChunks,
+} from "../lib/privateRag/searchPrivateLessonTopicChunks.js"
+
 const TEST_DOCUMENT_NAME =
   process.env
     .PRIVATE_RAG_COVERAGE_DOCUMENT_NAME
     ?.trim() ||
   "petla_for_CPP.docx"
+
+const MAX_SOURCE_COUNT = 3
+const MINIMUM_SIMILARITY = 0.55
 
 function getRequiredEnvironmentVariable(
   name
@@ -30,34 +41,10 @@ function getRequiredEnvironmentVariable(
   return value
 }
 
-const EXPECTED_SUPPORT_BY_DOCUMENT = {
-  "petla_for_CPP.docx":
-    Object.fromEntries(
-      PRIVATE_RAG_TASK_SUBTYPES.map(
-        (taskSubtype) => [
-          taskSubtype,
-          true,
-        ]
-      )
-    ),
-
-  "zmienne_CPP_semantic.docx":
-    Object.fromEntries(
-      PRIVATE_RAG_TASK_SUBTYPES.map(
-        (taskSubtype) => [
-          taskSubtype,
-          true,
-        ]
-      )
-    ),
-}
-
-
 function getServerSupabaseKey() {
   const key =
     process.env.SUPABASE_SECRET_KEY ||
-    process.env
-      .SUPABASE_SERVICE_ROLE_KEY
+    process.env.SUPABASE_SERVICE_ROLE_KEY
 
   if (!key) {
     throw new Error(
@@ -73,9 +60,7 @@ function createAdminClient() {
     getRequiredEnvironmentVariable(
       "NEXT_PUBLIC_SUPABASE_URL"
     ),
-
     getServerSupabaseKey(),
-
     {
       auth: {
         persistSession: false,
@@ -88,9 +73,7 @@ function createAdminClient() {
 
 async function getReferenceDocument(
   supabaseAdmin
-) 
-
-{
+) {
   const { data, error } =
     await supabaseAdmin
       .from("teacher_documents")
@@ -137,11 +120,65 @@ async function getReferenceDocument(
   return document
 }
 
+async function getLessonTopic({
+  supabaseAdmin,
+  lessonTopicId,
+}) {
+  const { data, error } =
+    await supabaseAdmin
+      .from("lesson_topics")
+      .select(
+        [
+          "id",
+          "display_title",
+          "lesson_key",
+        ].join(", ")
+      )
+      .eq(
+        "id",
+        lessonTopicId
+      )
+      .maybeSingle()
+
+  if (error) {
+    throw new Error(
+      `Nie udało się pobrać tematu testowego: ${error.message}`
+    )
+  }
+
+  if (!data) {
+    throw new Error(
+      "Nie znaleziono tematu testowego."
+    )
+  }
+
+  return data
+}
+
 function getChunkPreview(content) {
   return String(content || "")
     .replace(/\s+/g, " ")
     .trim()
     .slice(0, 180)
+}
+
+function assertStringArray(
+  value,
+  label
+) {
+  assert.ok(
+    Array.isArray(value),
+    `${label} nie jest tablicą.`
+  )
+
+  assert.ok(
+    value.every(
+      (item) =>
+        typeof item === "string" &&
+        item.trim()
+    ),
+    `${label} zawiera nieprawidłową wartość.`
+  )
 }
 
 async function main() {
@@ -159,16 +196,18 @@ async function main() {
       supabaseAdmin
     )
 
-    const expectedSupport =
-  EXPECTED_SUPPORT_BY_DOCUMENT[
-    document.original_file_name
-  ]
+  const lessonTopic =
+    await getLessonTopic({
+      supabaseAdmin,
+      lessonTopicId:
+        document.lesson_topic_id,
+    })
 
-if (!expectedSupport) {
-  throw new Error(
-    `Brak wyniku referencyjnego dla dokumentu: ${document.original_file_name}.`
-  )
-}
+  const query =
+    process.env
+      .PRIVATE_RAG_COVERAGE_QUERY
+      ?.trim() ||
+    `Wyjaśnij najważniejsze informacje, definicje, zasady, składnię, przykłady i typowe błędy dotyczące tematu: ${lessonTopic.display_title}.`
 
   console.log(
     "Uruchamiam ocenę pokrycia siedmiu typów zadań..."
@@ -178,9 +217,18 @@ if (!expectedSupport) {
     `Dokument referencyjny: ${document.original_file_name}`
   )
 
-  const result =
-    await assessPrivateRagTaskTypeCoverage({
+  console.log(
+    `Temat: ${lessonTopic.display_title}`
+  )
+
+  console.log(
+    `Zapytanie retrieval: ${query}`
+  )
+
+  const retrievalResult =
+    await searchPrivateLessonTopicChunks({
       supabaseAdmin,
+
       ownerId:
         document.owner_id,
 
@@ -190,13 +238,96 @@ if (!expectedSupport) {
       lessonTopicId:
         document.lesson_topic_id,
 
-      matchCountPerTask: 5,
+      query,
     })
+
+  assert.equal(
+    retrievalResult.status,
+    "retrieved",
+    `Test wymaga statusu retrieved, otrzymano: ${retrievalResult.status}.`
+  )
+
+  const sourceContext =
+    buildPrivateRagContext({
+      retrievalResult,
+    })
+
+  assert.equal(
+    sourceContext.status,
+    "ready",
+    "Kontekst źródłowy nie otrzymał statusu ready."
+  )
+
+  assert.ok(
+    sourceContext.sourceCount > 0 &&
+      sourceContext.sourceCount <=
+        MAX_SOURCE_COUNT,
+    "Kontekst powinien zawierać od 1 do 3 zaakceptowanych chunków."
+  )
+
+  sourceContext.sources.forEach(
+    (source) => {
+      assert.ok(
+        typeof source.similarity ===
+          "number" &&
+          source.similarity >=
+            MINIMUM_SIMILARITY,
+        `Źródło ${source.chunkId} ma similarity poniżej 0.55.`
+      )
+    }
+  )
+
+  console.log(
+    `Zaakceptowane źródła: ${sourceContext.sourceCount}`
+  )
+
+  sourceContext.sources.forEach(
+    (source) => {
+      console.log(
+        [
+          `- ${source.originalFileName}`,
+          `chunk ${source.chunkIndex}`,
+          `similarity ${source.similarity.toFixed(6)}`,
+          `[${source.chunkId}]`,
+        ].join(" | ")
+      )
+    }
+  )
+
+  const sourceContextSnapshot =
+    JSON.stringify(
+      sourceContext
+    )
+
+  const result =
+    await assessPrivateRagTaskTypeCoverage({
+      sourceContext,
+    })
+
+  assert.equal(
+    JSON.stringify(
+      sourceContext
+    ),
+    sourceContextSnapshot,
+    "Ocena pokrycia zmodyfikowała sourceContext."
+  )
 
   assert.equal(
     result.status,
     "assessed",
     "Ocena nie zakończyła się statusem assessed."
+  )
+
+  assert.equal(
+    result.sourceCount,
+    sourceContext.sourceCount,
+    "Wynik oceny ma inną liczbę źródeł."
+  )
+
+  assert.deepEqual(
+    result.sources,
+    sourceContext.sources,
+    "Wynik oceny zmienił źródła."
   )
 
   assert.ok(
@@ -210,35 +341,21 @@ if (!expectedSupport) {
     Object.keys(
       result.assessments
     ).sort(),
-
     [
       ...PRIVATE_RAG_TASK_SUBTYPES,
     ].sort(),
-
     "Nie oceniono dokładnie siedmiu typów zadań."
   )
 
-  const evidenceChunkById =
+  const sourceByChunkId =
     new Map(
-      result.evidenceChunks.map(
-        (chunk) => [
-          chunk.chunkId,
-          chunk,
+      sourceContext.sources.map(
+        (source) => [
+          source.chunkId,
+          source,
         ]
       )
     )
-
-  console.log(
-    `Temat: ${result.lessonTopic.displayTitle}`
-  )
-
-  console.log(
-    `Dokumenty źródłowe: ${result.sourceDocuments.length}`
-  )
-
-  console.log(
-    `Unikalne chunki dowodowe: ${result.evidenceChunks.length}`
-  )
 
   console.log(
     "\nMACIERZ POKRYCIA:"
@@ -251,11 +368,78 @@ if (!expectedSupport) {
           taskSubtype
         ]
 
+      assert.equal(
+        typeof assessment.isSupported,
+        "boolean",
+        `Typ ${taskSubtype} nie ma binarnej oceny isSupported.`
+      )
+
+      assertStringArray(
+        assessment.evidenceChunkIds,
+        `${taskSubtype}.evidenceChunkIds`
+      )
+
+      assertStringArray(
+        assessment.missingEvidence,
+        `${taskSubtype}.missingEvidence`
+      )
+
+      assertStringArray(
+        assessment.constraints,
+        `${taskSubtype}.constraints`
+      )
+
+      assert.ok(
+        typeof assessment.evidenceSummary ===
+          "string" &&
+          assessment.evidenceSummary.trim(),
+        `Typ ${taskSubtype} ma pusty evidenceSummary.`
+      )
+
+      assessment.evidenceChunkIds.forEach(
+        (chunkId) => {
+          assert.ok(
+            sourceByChunkId.has(
+              chunkId
+            ),
+            `Typ ${taskSubtype} wskazuje chunk spoza sourceContext: ${chunkId}.`
+          )
+        }
+      )
+
+      if (
+        assessment.isSupported
+      ) {
+        assert.ok(
+          assessment
+            .evidenceChunkIds
+            .length > 0,
+          `Typ ${taskSubtype} ma status TAK bez dowodu.`
+        )
+
         assert.equal(
-  assessment.isSupported,
-  expectedSupport[taskSubtype],
-  `Nieprawidłowa ocena pokrycia typu ${taskSubtype} dla dokumentu ${document.original_file_name}.`
-)
+          assessment
+            .missingEvidence
+            .length,
+          0,
+          `Typ ${taskSubtype} ma status TAK i jednocześnie braki.`
+        )
+      } else {
+        assert.ok(
+          assessment
+            .missingEvidence
+            .length > 0,
+          `Typ ${taskSubtype} ma status NIE bez opisu braków.`
+        )
+
+        assert.equal(
+          assessment
+            .constraints
+            .length,
+          0,
+          `Typ ${taskSubtype} ma status NIE i niepuste constraints.`
+        )
+      }
 
       console.log(
         "\n=================================================="
@@ -266,12 +450,12 @@ if (!expectedSupport) {
       )
 
       console.log(
-  `Obsługiwany: ${
-    assessment.isSupported
-      ? "TAK"
-      : "NIE"
-  }`
-)
+        `Obsługiwany: ${
+          assessment.isSupported
+            ? "TAK"
+            : "NIE"
+        }`
+      )
 
       console.log(
         `Dowód: ${assessment.evidenceSummary}`
@@ -292,7 +476,8 @@ if (!expectedSupport) {
         `Ograniczenia: ${
           assessment.constraints
             .length > 0
-            ? assessment.constraints
+            ? assessment
+                .constraints
                 .join(" | ")
             : "-"
         }`
@@ -312,29 +497,63 @@ if (!expectedSupport) {
 
       assessment.evidenceChunkIds.forEach(
         (chunkId) => {
-          const chunk =
-            evidenceChunkById.get(
+          const source =
+            sourceByChunkId.get(
               chunkId
             )
 
-          assert.ok(
-            chunk,
-            `Nie znaleziono treści chunka ${chunkId}.`
-          )
-
           console.log(
             [
-              `- ${chunk.originalFileName}`,
-              `chunk ${chunk.chunkIndex}`,
+              `- ${source.originalFileName}`,
+              `chunk ${source.chunkIndex}`,
               `[${chunkId}]`,
               getChunkPreview(
-                chunk.content
+                source.content
               ),
             ].join(" | ")
           )
         }
       )
     }
+  )
+
+  const supportedTaskSubtypes =
+    PRIVATE_RAG_TASK_SUBTYPES.filter(
+      (taskSubtype) =>
+        result.assessments[
+          taskSubtype
+        ].isSupported
+    )
+
+  const unsupportedTaskSubtypes =
+    PRIVATE_RAG_TASK_SUBTYPES.filter(
+      (taskSubtype) =>
+        !result.assessments[
+          taskSubtype
+        ].isSupported
+    )
+
+  assert.equal(
+    supportedTaskSubtypes.length +
+      unsupportedTaskSubtypes.length,
+    PRIVATE_RAG_TASK_SUBTYPES.length,
+    "Podsumowanie nie obejmuje siedmiu typów zadań."
+  )
+
+  console.log(
+    `\nObsługiwane typy (${supportedTaskSubtypes.length}): ${
+      supportedTaskSubtypes.length > 0
+        ? supportedTaskSubtypes.join(", ")
+        : "brak"
+    }`
+  )
+
+  console.log(
+    `Nieobsługiwane typy (${unsupportedTaskSubtypes.length}): ${
+      unsupportedTaskSubtypes.length > 0
+        ? unsupportedTaskSubtypes.join(", ")
+        : "brak"
+    }`
   )
 
   console.log(
@@ -362,7 +581,7 @@ if (!expectedSupport) {
   )
 
   console.log(
-    "Wynik wymaga jeszcze kontroli merytorycznej nauczyciela."
+    "Wynik macierzy wymaga kontroli merytorycznej nauczyciela."
   )
 }
 
@@ -381,3 +600,8 @@ try {
 
   process.exitCode = 1
 }
+
+/*
+Uruchomienie testu:
+node --env-file=.env.local scripts\testPrivateRagTaskTypeCoverage.mjs
+*/

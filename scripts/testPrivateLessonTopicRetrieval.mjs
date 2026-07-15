@@ -9,7 +9,8 @@ import {
   searchPrivateLessonTopicChunks,
 } from "../lib/privateRag/searchPrivateLessonTopicChunks.js"
 
-const TEST_MATCH_COUNT = 5
+const MAX_RETRIEVED_CHUNKS = 3
+const MINIMUM_SIMILARITY = 0.55
 
 function getRequiredEnvironmentVariable(name) {
   const value = process.env[name]
@@ -175,8 +176,6 @@ async function main() {
       lessonTopicId:
         referenceDocument.lesson_topic_id,
       query,
-      matchCount:
-        TEST_MATCH_COUNT,
     })
 
   assert.equal(
@@ -204,9 +203,21 @@ async function main() {
   )
 
   assert.ok(
-    result.retrieval.resultCount > 0,
-    "Semantic retrieval nie zwrócił chunków."
-  )
+  result.retrieval.resultCount > 0,
+  "Semantic retrieval nie zwrócił zaakceptowanych chunków."
+)
+
+ assert.ok(
+  result.retrieval.resultCount <=
+    MAX_RETRIEVED_CHUNKS,
+  "Bramka zwróciła więcej niż 3 chunki."
+)
+
+assert.equal(
+  result.retrieval.matches.length,
+  result.retrieval.resultCount,
+  "resultCount nie odpowiada liczbie zaakceptowanych chunków."
+)
 
   const allowedDocumentIds =
     new Set(
@@ -223,6 +234,12 @@ async function main() {
         ),
         `Wynik ${index + 1} pochodzi z dokumentu nieprzypisanego do wybranego tematu.`
       )
+
+       assert.ok(
+  match.similarity >=
+    MINIMUM_SIMILARITY,
+  `Wynik ${index + 1} ma similarity poniżej 0.55.`
+)
 
       if (index > 0) {
         assert.ok(
@@ -264,9 +281,64 @@ async function main() {
     }
   )
 
-  console.log(
-    "\nTEST RETRIEVALU WEDŁUG TEMATU LEKCJI: OK"
+console.log(
+  "\nUruchamiam test niewystarczającego similarity..."
+)
+
+const insufficientResult =
+  await searchPrivateLessonTopicChunks({
+    supabaseAdmin,
+    ownerId:
+      referenceDocument.owner_id,
+    subjectId:
+      referenceDocument.subject_id,
+    lessonTopicId:
+      referenceDocument.lesson_topic_id,
+    query:
+      "Jak przebiega fotosynteza u roślin?",
+  })
+  assert.equal(
+    insufficientResult.status,
+    "insufficient_similarity",
+    "Oczekiwano statusu insufficient_similarity."
   )
+  assert.equal(
+    insufficientResult.reason,
+    "no_matches_above_minimum_similarity",
+    "Zwrócono nieprawidłową przyczynę odrzucenia wyników."
+  )
+   assert.ok(
+    insufficientResult.sourceDocumentCount > 0,
+    "Test insufficient_similarity wymaga istniejących źródeł."
+  )
+
+  assert.ok(
+    insufficientResult.retrieval &&
+      typeof insufficientResult.retrieval ===
+        "object",
+    "Semantic retrieval powinien zostać wykonany."
+  )
+
+  assert.equal(
+    insufficientResult.retrieval.resultCount,
+    0,
+    "Po zastosowaniu bramki nie powinien pozostać żaden chunk."
+  )
+
+  assert.deepEqual(
+    insufficientResult.retrieval.matches,
+    [],
+    "Lista zaakceptowanych chunków powinna być pusta."
+  )
+
+  console.log(
+    "Status insufficient_similarity: OK"
+  )
+
+    console.log(
+    "\nTEST BRAMKI JAKOŚCI RETRIEVAL: OK"
+  )
+
 }
 
 try {

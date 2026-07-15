@@ -206,8 +206,7 @@ async function main() {
       lessonTopicId: topic.id,
       query:
         `Wyjaśnij temat: ${topic.display_title}.`,
-      matchCount: 5,
-    })
+      })
 
   assert.equal(
     result.status,

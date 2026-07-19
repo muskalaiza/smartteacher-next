@@ -6,8 +6,8 @@ import {
 } from "@supabase/supabase-js"
 
 import {
-  assessPrivateRagTaskTypeCoverage,
-} from "../lib/privateRag/assessPrivateRagTaskTypeCoverage.js"
+  getOrAssessPrivateRagTaskTypeCoverage,
+} from "../lib/privateRag/getOrAssessPrivateRagTaskTypeCoverage.js"
 
 import {
   buildPrivateRagContext,
@@ -351,18 +351,79 @@ async function main() {
   )
 
   /*
-    3. Jedna ocena pokrycia siedmiu typów
-  */
-  const coverageResult =
-    await assessPrivateRagTaskTypeCoverage({
-      sourceContext,
-    })
+  3. Pierwszy odczyt albo obliczenie coverage
+*/
+const firstCoverageResult =
+  await getOrAssessPrivateRagTaskTypeCoverage({
+    supabaseAdmin,
+    sourceContext,
+  })
 
-  assert.equal(
-    coverageResult.status,
-    "assessed",
-    "Coverage nie zakończyło się statusem assessed."
-  )
+assert.equal(
+  firstCoverageResult.status,
+  "assessed",
+  "Pierwsze coverage nie zakończyło się statusem assessed."
+)
+
+assert.ok(
+  ["miss", "hit"].includes(
+    firstCoverageResult.cacheStatus
+  ),
+  `Nieprawidłowy pierwszy status cache: ${firstCoverageResult.cacheStatus}.`
+)
+
+console.log(
+  `Pierwsze sprawdzenie coverage — cache: ${firstCoverageResult.cacheStatus.toUpperCase()}`
+)
+
+console.log(
+  `Nowe tokeny coverage: ${firstCoverageResult.usage.totalTokens}`
+)
+
+/*
+  4. Ponowne użycie identycznego sourceContext
+  musi pobrać assessments z cache bez modelu.
+*/
+const secondCoverageResult =
+  await getOrAssessPrivateRagTaskTypeCoverage({
+    supabaseAdmin,
+    sourceContext,
+  })
+
+assert.equal(
+  secondCoverageResult.status,
+  "assessed",
+  "Drugie coverage nie zakończyło się statusem assessed."
+)
+
+assert.equal(
+  secondCoverageResult.cacheStatus,
+  "hit",
+  "Drugie sprawdzenie identycznych źródeł powinno zakończyć się cache HIT."
+)
+
+assert.equal(
+  secondCoverageResult.usage.totalTokens,
+  0,
+  "Cache HIT nie powinien zużywać nowych tokenów coverage."
+)
+
+assert.deepEqual(
+  secondCoverageResult.assessments,
+  firstCoverageResult.assessments,
+  "Assessments z cache różnią się od pierwszego wyniku."
+)
+
+console.log(
+  "Drugie sprawdzenie coverage — cache: HIT"
+)
+
+console.log(
+  "Nowe tokeny coverage przy HIT: 0"
+)
+
+const coverageResult =
+  secondCoverageResult
 
   /*
     4. Bezpieczny taskPlan
@@ -472,9 +533,6 @@ try {
 }
 
 /*
-Uruchomienie:
+Uruchomienie testu:
 node --env-file=.env.local scripts\testPrivateRagGeneratorIntegration.mjs
-To wykonanie zawiera dwa wywołania modelu:
-1. ocena coverage siedmiu typów,
-2. wygenerowanie pięciu zadań.
 */

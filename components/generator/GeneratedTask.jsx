@@ -24,6 +24,34 @@ function CodeBlock({ children }) {
   );
 }
 
+const ANSWER_AREA_HEIGHTS = {
+  shortCode: "min-h-40",
+  code: "min-h-64",
+  text: "min-h-32",
+};
+
+function AnswerArea({ label, size }) {
+  const heightClass = ANSWER_AREA_HEIGHTS[size];
+
+  if (!heightClass) {
+    throw new Error(
+      `Nieobsługiwany rozmiar obszaru odpowiedzi: ${
+        size || "[brak]"
+      }.`
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      <SectionLabel>{label}</SectionLabel>
+
+      <div
+        className={`rounded-xl border border-dashed border-zinc-700 bg-zinc-900/40 ${heightClass}`}
+      />
+    </div>
+  );
+}
+
 /* =========================
    CLOSED_SINGLE
 ========================= */
@@ -173,6 +201,10 @@ function ErrorFindTask({ task }) {
         <SectionLabel>Kod z błędem</SectionLabel>
         <CodeBlock>{task.codeWithError}</CodeBlock>
       </div>
+      <AnswerArea
+  label="Miejsce na poprawiony kod"
+  size="shortCode"
+/>
     </div>
   );
 }
@@ -201,6 +233,10 @@ function OpenCodeTask({ task }) {
           ))}
         </ul>
       </div>
+      <AnswerArea
+  label="Miejsce na rozwiązanie"
+  size="code"
+/>
     </div>
   );
 }
@@ -218,6 +254,10 @@ function OpenExplainTask({ task }) {
         <SectionLabel>Kontekst do analizy</SectionLabel>
         <CodeBlock>{task.context}</CodeBlock>
       </div>
+      <AnswerArea
+  label="Miejsce na odpowiedź"
+  size="text"
+/>
     </div>
   );
 }

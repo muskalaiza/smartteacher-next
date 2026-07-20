@@ -1,3 +1,5 @@
+import GeneratedTask from "./GeneratedTask";
+
 export default function GeneratedMaterial({
   generationResult,
 }) {
@@ -37,9 +39,9 @@ export default function GeneratedMaterial({
               Zadanie {task.number}
             </p>
 
-            <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-zinc-100">
-              {task.question}
-            </p>
+            <div className="mt-3">
+                <GeneratedTask task={task} />
+            </div>
           </li>
         ))}
       </ol>

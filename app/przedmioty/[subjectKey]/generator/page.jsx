@@ -6,30 +6,53 @@ import { useParams } from "next/navigation";
 import { useGeneratorLessonCatalog } from "@/lib/lessonCatalogs/useGeneratorLessonCatalog";
 import { useActiveTeacherSubject } from "@/lib/subjects/useActiveTeacherSubject";
 
+import { supabase } from "@/lib/supabaseClient";
+import {
+  requestMaterialGeneration,
+} from "@/lib/generation/generationApi";
+
 const MATERIAL_TYPES = [
   {
-    value: "karta-pracy",
+    value: "karta pracy",
     label: "Karta pracy",
     description: "Materiał do pracy z uczniami podczas lekcji.",
+    disabled: true,
   },
   {
-    value: "kartkowka",
+    value: "kartkówka",
     label: "Kartkówka",
     description: "Krótka forma sprawdzająca z jednego tematu.",
+    disabled: false,
   },
   {
     value: "sprawdzian",
     label: "Sprawdzian",
     description: "Zestaw zadań z wybranego działu.",
+    disabled: true,
   },
 ];
 
 const STUDENT_PROFILES = [
-  "Standard",
-  "Spektrum ASD",
-  "ADHD",
-  "Dysleksja",
-  "Uczeń obcojęzyczny",
+  {
+    value: "Standard",
+    label: "Standard",
+  },
+  {
+    value: "ASD",
+    label: "Spektrum ASD",
+  },
+  {
+    value: "ADHD",
+    label: "ADHD",
+  },
+  {
+    value: "Dysleksja",
+    label: "Dysleksja",
+  },
+  {
+    value: "Obcojęzyczny",
+    label: "Uczeń obcojęzyczny",
+  },
 ];
 
 const TASK_COUNT_OPTIONS = [
@@ -50,6 +73,7 @@ const TASK_COUNT_OPTIONS = [
   },
 ];
 
+
 export default function SubjectGeneratorPage() {
   const params = useParams();
   const subjectKey =
@@ -57,8 +81,6 @@ export default function SubjectGeneratorPage() {
 
   const { subject, isLoading, errorMessage } =
     useActiveTeacherSubject(subjectKey);
-
-  
 
   //stany dla działów
   const subjectId = subject?.id || "";
@@ -86,12 +108,92 @@ export default function SubjectGeneratorPage() {
 
   // stany formularza
     const [selectedMaterialType, setSelectedMaterialType] =
-    useState(MATERIAL_TYPES[0].value);
+  // useState(MATERIAL_TYPES[0].value);
+    useState("kartkówka");
 
   const [selectedTaskCount, setSelectedTaskCount] = useState(
     TASK_COUNT_OPTIONS[0].value
   );
   
+const [selectedProfiles, setSelectedProfiles] =
+  useState(["Standard"]);
+
+const [isGenerating, setIsGenerating] =
+  useState(false);
+
+const [generationError, setGenerationError] =
+  useState("");
+
+const [generationResult, setGenerationResult] =
+  useState(null);
+
+function handleProfileChange(profileValue) {
+  setSelectedProfiles((currentProfiles) => {
+    if (currentProfiles.includes(profileValue)) {
+      return currentProfiles.filter(
+        (profile) => profile !== profileValue
+      );
+    }
+
+    return [
+      ...currentProfiles,
+      profileValue,
+    ];
+  });
+}
+
+async function handleGenerate() {
+  setGenerationError("");
+  setGenerationResult(null);
+
+  if (!selectedLessonTopicId) {
+    setGenerationError(
+      "Najpierw wybierz temat lekcji."
+    );
+    return;
+  }
+
+  if (selectedProfiles.length === 0) {
+    setGenerationError(
+      "Wybierz co najmniej jeden profil ucznia."
+    );
+    return;
+  }
+
+  setIsGenerating(true);
+
+  try {
+    const result =
+      await requestMaterialGeneration({
+        supabase,
+        lessonTopicId:
+          selectedLessonTopicId,
+        materialType:
+          selectedMaterialType,
+        taskCount:
+          selectedTaskCount,
+        profiles:
+          selectedProfiles,
+      });
+
+    setGenerationResult(result);
+  } catch (error) {
+    setGenerationError(
+      error instanceof Error
+        ? error.message
+        : "Nie udało się wygenerować materiału."
+    );
+  } finally {
+    setIsGenerating(false);
+  }
+}
+
+const canGenerate =
+  Boolean(selectedLessonTopicId) &&
+  selectedMaterialType === "kartkówka" &&
+  selectedProfiles.length > 0 &&
+  !isGenerating;
+
   if (isLoading) {
     return (
       <div className="space-y-3">
@@ -306,13 +408,20 @@ export default function SubjectGeneratorPage() {
                       key={type.value}
                       className="flex cursor-pointer gap-3 rounded-xl border border-zinc-800 bg-zinc-900/60 p-4 transition hover:border-zinc-700 hover:bg-zinc-900"
                     >
-                      <input
+                     <input
   type="radio"
   name="materialType"
   value={type.value}
-  checked={selectedMaterialType === type.value}
-  onChange={(event) => setSelectedMaterialType(event.target.value)}
-  className="mt-1 h-4 w-4 accent-sky-500"
+  checked={
+    selectedMaterialType === type.value
+  }
+  onChange={(event) =>
+    setSelectedMaterialType(
+      event.target.value
+    )
+  }
+  disabled={type.disabled}
+  className="mt-1 h-4 w-4 accent-sky-500 disabled:cursor-not-allowed"
 />
 
                       <span className="space-y-1">
@@ -339,7 +448,6 @@ export default function SubjectGeneratorPage() {
                 </div>
 
                 <div className="space-y-2">
-                 
 
                  <select
   id="taskCount"
@@ -376,28 +484,92 @@ export default function SubjectGeneratorPage() {
               </div>
 
               <div className="grid gap-3 text-sm text-zinc-300 sm:grid-cols-2 lg:grid-cols-3">
-                {STUDENT_PROFILES.map((profile, index) => (
-                  <label
-                    key={profile}
-                    className="flex cursor-pointer items-center gap-3 rounded-xl border border-zinc-800 bg-zinc-900/60 p-4 transition hover:border-zinc-700 hover:bg-zinc-900"
-                  >
-                    <input
-                      type="checkbox"
-                      defaultChecked={index === 0}
-                      className="h-4 w-4 rounded border-zinc-600 bg-zinc-900 accent-sky-500"
-                    />
-                    <span>{profile}</span>
-                  </label>
-                ))}
+               {STUDENT_PROFILES.map((profile) => (
+  <label
+    key={profile.value}
+    className="flex cursor-pointer items-center gap-3 rounded-xl border border-zinc-800 bg-zinc-900/60 p-4 transition hover:border-zinc-700 hover:bg-zinc-900"
+  >
+    <input
+      type="checkbox"
+      checked={selectedProfiles.includes(
+        profile.value
+      )}
+      onChange={() =>
+        handleProfileChange(
+          profile.value
+        )
+      }
+      className="h-4 w-4 rounded border-zinc-600 bg-zinc-900 accent-sky-500"
+    />
+
+    <span>{profile.label}</span>
+  </label>
+))}
               </div>
             </fieldset>
 
-            <button
-              type="button"
-              className="w-full rounded-xl bg-sky-500 px-5 py-3 text-sm font-semibold text-white transition hover:bg-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-500/30"
-            >
-              Generuj zestaw materiałów
-            </button>
+           <button
+  type="button"
+  onClick={handleGenerate}
+  disabled={!canGenerate}
+  className="w-full rounded-xl bg-sky-500 px-5 py-3 text-sm font-semibold text-white transition hover:bg-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-500/30 disabled:cursor-not-allowed disabled:bg-zinc-700 disabled:text-zinc-400"
+>
+  {isGenerating
+    ? "Generowanie materiału..."
+    : "Generuj zestaw materiałów"}
+</button>
+
+{generationError ? (
+  <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-4">
+    <p className="text-sm text-red-200">
+      {generationError}
+    </p>
+  </div>
+) : null}
+
+{generationResult?.material?.tasks ? (
+  <section className="space-y-4 rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-6">
+    <div>
+      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-300">
+        Materiał wygenerowany
+      </p>
+
+      <h2 className="mt-1 text-lg font-semibold text-zinc-50">
+        {
+          generationResult.lessonTopic
+            ?.displayTitle
+        }
+      </h2>
+
+      <p className="mt-1 text-sm text-zinc-400">
+        Liczba zadań:{" "}
+        {
+          generationResult.material.tasks
+            .length
+        }
+      </p>
+    </div>
+
+    <ol className="space-y-4">
+      {generationResult.material.tasks.map(
+        (task) => (
+          <li
+            key={`${task.number}-${task.taskSubtype}`}
+            className="rounded-xl border border-zinc-800 bg-zinc-950/70 p-4"
+          >
+            <p className="text-xs font-semibold uppercase tracking-wide text-sky-400">
+              Zadanie {task.number}
+            </p>
+
+            <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-zinc-100">
+              {task.question}
+            </p>
+          </li>
+        )
+      )}
+    </ol>
+  </section>
+) : null}
           </div>
         </section>
 

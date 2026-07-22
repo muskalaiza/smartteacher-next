@@ -348,11 +348,6 @@ function OpenExplainTask({ task }) {
   return (
     <div className="space-y-4">
       <TaskText>{task.instruction}</TaskText>
-
-      <div className="space-y-2">
-        <SectionLabel>Kontekst do analizy</SectionLabel>
-        <CodeBlock>{task.context}</CodeBlock>
-      </div>
     </div>
   );
 }

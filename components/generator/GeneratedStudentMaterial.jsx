@@ -24,7 +24,9 @@ export default function GeneratedStudentMaterial({
   tasks,
 }) {
   return (
-  <article className="print-student-material space-y-6 rounded-2xl border border-zinc-700 bg-zinc-950 p-6 shadow-sm">
+  <article className="print-student-material space-y-6 rounded-2xl border border-zinc-700 bg-zinc-950 p-6 shadow-sm"
+     data-profile={profileValue}
+     >
       <header className="space-y-5 border-b border-zinc-800 pb-6">
         <h3 className="text-xl font-bold uppercase tracking-wide text-zinc-50">
           {materialTypeLabel} — Profil: {profileLabel}

@@ -1,3 +1,7 @@
+import {
+  getTaskProfilePresentation,
+} from "@/lib/generation/getTaskProfilePresentation";
+
 const HINT_LABELS = ["A", "B", "C", "D"];
 
 function TaskText({ children }) {
@@ -30,8 +34,44 @@ const ANSWER_AREA_HEIGHTS = {
   text: "min-h-32",
 };
 
+const TASK_ANSWER_AREAS = {
+  error_find: {
+    label: "Miejsce na poprawiony kod",
+    size: "shortCode",
+  },
+
+  open_code: {
+    label: "Miejsce na rozwiązanie",
+    size: "code",
+  },
+
+  open_explain: {
+    label: "Miejsce na odpowiedź",
+    size: "text",
+  },
+};
+
+function TaskAnswerArea({
+  taskSubtype,
+}) {
+  const config =
+    TASK_ANSWER_AREAS[taskSubtype];
+
+  if (!config) {
+    return null;
+  }
+
+  return (
+    <AnswerArea
+      label={config.label}
+      size={config.size}
+    />
+  );
+}
+
 function AnswerArea({ label, size }) {
-  const heightClass = ANSWER_AREA_HEIGHTS[size];
+  const heightClass =
+    ANSWER_AREA_HEIGHTS[size];
 
   if (!heightClass) {
     throw new Error(
@@ -48,6 +88,73 @@ function AnswerArea({ label, size }) {
       <div
         className={`rounded-xl border border-dashed border-zinc-700 bg-zinc-900/40 ${heightClass}`}
       />
+    </div>
+  );
+}
+
+function AsdObjective({ children }) {
+  return (
+    <div className="rounded-lg border border-violet-500/25 bg-violet-500/10 p-3 print:rounded-none print:border-0 print:bg-transparent print:p-0">
+      <p className="text-sm leading-6 text-violet-100 print:text-[8pt] print:leading-tight print:text-black">
+        <span className="font-semibold">
+          Cel zadania:
+        </span>{" "}
+        {children}
+      </p>
+    </div>
+  );
+}
+
+function AdhdPlan({ plan }) {
+  return (
+    <div className="rounded-lg border border-sky-500/25 bg-sky-500/10 p-3 print:rounded-none print:border-0 print:bg-transparent print:p-0">
+      <p className="text-xs font-semibold uppercase tracking-wide text-sky-300 print:text-[8pt] print:leading-tight print:text-black">
+        Plan działania
+      </p>
+
+      {plan.focus ? (
+        <p className="mt-1 text-sm leading-5 text-zinc-100 print:mt-0 print:text-[8pt] print:leading-tight print:text-black">
+          {plan.focus}
+        </p>
+      ) : null}
+
+      {plan.steps.length > 0 ? (
+        <ol className="mt-2 grid gap-1 sm:grid-cols-2 print:mt-1 print:grid-cols-2 print:gap-x-4 print:gap-y-0">
+          {plan.steps.map((step, index) => (
+            <li
+              key={`${index}-${step}`}
+              className="flex gap-2 text-sm leading-5 text-zinc-100 print:text-[8pt] print:leading-tight print:text-black"
+            >
+              <span className="font-semibold text-sky-400 print:text-black">
+                {index + 1}.
+              </span>
+
+              <span>{step}</span>
+            </li>
+          ))}
+        </ol>
+      ) : null}
+
+      {plan.checkpoint ? (
+        <p className="mt-2 text-sm leading-5 text-amber-200 print:mt-1 print:text-[8pt] print:leading-tight print:text-black">
+          <span className="font-semibold">
+            Sprawdź:
+          </span>{" "}
+          {plan.checkpoint}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+function AsdAnswerHint({ children }) {
+  return (
+    <div className="space-y-1 print:space-y-0">
+      <SectionLabel>Odpowiedź</SectionLabel>
+
+      <p className="text-sm leading-6 text-zinc-300 print:text-[8pt] print:leading-tight print:text-black">
+        [{children}]
+      </p>
     </div>
   );
 }
@@ -201,10 +308,6 @@ function ErrorFindTask({ task }) {
         <SectionLabel>Kod z błędem</SectionLabel>
         <CodeBlock>{task.codeWithError}</CodeBlock>
       </div>
-      <AnswerArea
-  label="Miejsce na poprawiony kod"
-  size="shortCode"
-/>
     </div>
   );
 }
@@ -233,10 +336,6 @@ function OpenCodeTask({ task }) {
           ))}
         </ul>
       </div>
-      <AnswerArea
-  label="Miejsce na rozwiązanie"
-  size="code"
-/>
     </div>
   );
 }
@@ -254,10 +353,6 @@ function OpenExplainTask({ task }) {
         <SectionLabel>Kontekst do analizy</SectionLabel>
         <CodeBlock>{task.context}</CodeBlock>
       </div>
-      <AnswerArea
-  label="Miejsce na odpowiedź"
-  size="text"
-/>
     </div>
   );
 }
@@ -276,7 +371,11 @@ const TASK_RENDERERS = {
   open_explain: OpenExplainTask,
 };
 
-export default function GeneratedTask({ task }) {
+export default function GeneratedTask({
+  task,
+  profileValue,
+  materialTypeValue,
+}) {
   const TaskRenderer =
     TASK_RENDERERS[task.taskSubtype];
 
@@ -288,5 +387,38 @@ export default function GeneratedTask({ task }) {
     );
   }
 
-  return <TaskRenderer task={task} />;
+  const profilePresentation =
+    getTaskProfilePresentation({
+      task,
+      profileValue,
+      materialTypeValue,
+    });
+
+  return (
+    <div className="space-y-4">
+      {profilePresentation.objective ? (
+        <AsdObjective>
+          {profilePresentation.objective}
+        </AsdObjective>
+      ) : null}
+
+      <TaskRenderer task={task} />
+
+      {profilePresentation.plan ? (
+        <AdhdPlan
+          plan={profilePresentation.plan}
+        />
+      ) : null}
+
+      {profilePresentation.answerHint ? (
+        <AsdAnswerHint>
+          {profilePresentation.answerHint}
+        </AsdAnswerHint>
+      ) : null}
+
+      <TaskAnswerArea
+        taskSubtype={task.taskSubtype}
+      />
+    </div>
+  );
 }

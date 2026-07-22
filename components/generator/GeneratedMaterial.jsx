@@ -1,50 +1,66 @@
-import GeneratedTask from "./GeneratedTask";
+"use client";
+
+import GeneratedStudentMaterial from "./GeneratedStudentMaterial";
 
 export default function GeneratedMaterial({
-  generationResult,
+  generationOutput,
 }) {
+  const generationResult =
+    generationOutput?.result;
+
   const tasks =
     generationResult?.material?.tasks;
 
-  if (!tasks) {
+  const profiles =
+    generationOutput?.profiles;
+
+  const materialTypeLabel =
+    generationOutput?.materialType?.label;
+
+  const topicTitle =
+    generationResult?.lessonTopic?.displayTitle;
+
+  const materialTypeValue =
+  generationOutput?.materialType?.value;
+
+  if (
+    !Array.isArray(tasks) ||
+    tasks.length === 0 ||
+    !Array.isArray(profiles) ||
+    profiles.length === 0
+  ) {
     return null;
   }
 
+  function handlePrint() {
+    window.print();
+  }
+
   return (
-    <section className="space-y-4 rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-6">
-      <div>
-        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-300">
-          Materiał wygenerowany
-        </p>
-
-        <h2 className="mt-1 text-lg font-semibold text-zinc-50">
-          {
-            generationResult.lessonTopic
-              ?.displayTitle
-          }
-        </h2>
-
-        <p className="mt-1 text-sm text-zinc-400">
-          Liczba zadań: {tasks.length}
-        </p>
+    <section className="space-y-6">
+      <div className="flex flex-wrap gap-3 print:hidden">
+        <button
+          type="button"
+          onClick={handlePrint}
+          className="inline-flex items-center justify-center rounded-xl bg-emerald-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
+        >
+             🖨️ Drukuj / Zapisz PDF
+        </button>
       </div>
 
-      <ol className="space-y-4">
-        {tasks.map((task) => (
-          <li
-            key={`${task.number}-${task.taskSubtype}`}
-            className="rounded-xl border border-zinc-800 bg-zinc-950/70 p-4"
-          >
-            <p className="text-xs font-semibold uppercase tracking-wide text-sky-400">
-              Zadanie {task.number}
-            </p>
-
-            <div className="mt-3">
-                <GeneratedTask task={task} />
-            </div>
-          </li>
+      <div className="print-materials space-y-8">
+        {profiles.map((profile) => (
+          <GeneratedStudentMaterial
+            key={profile.value}
+            materialTypeValue={materialTypeValue}
+            materialTypeLabel={materialTypeLabel}
+            profileValue={profile.value}
+            profileLabel={profile.label}
+            topicTitle={topicTitle}
+            tasks={tasks}
+          />
         ))}
-      </ol>
+      </div>
     </section>
   );
 }

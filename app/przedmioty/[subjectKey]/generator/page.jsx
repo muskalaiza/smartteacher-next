@@ -126,7 +126,7 @@ const [isGenerating, setIsGenerating] =
 const [generationError, setGenerationError] =
   useState("");
 
-const [generationResult, setGenerationResult] =
+const [generationOutput, setGenerationOutput] =
   useState(null);
 
 function handleProfileChange(profileValue) {
@@ -146,7 +146,7 @@ function handleProfileChange(profileValue) {
 
 async function handleGenerate() {
   setGenerationError("");
-  setGenerationResult(null);
+ setGenerationOutput(null);
 
   if (!selectedLessonTopicId) {
     setGenerationError(
@@ -161,6 +161,28 @@ async function handleGenerate() {
     );
     return;
   }
+
+  const selectedMaterialTypeOption =
+  MATERIAL_TYPES.find(
+    (materialType) =>
+      materialType.value === selectedMaterialType
+  );
+
+const selectedProfileOptions =
+  STUDENT_PROFILES.filter((profile) =>
+    selectedProfiles.includes(profile.value)
+  );
+
+if (
+  !selectedMaterialTypeOption ||
+  selectedProfileOptions.length !==
+    selectedProfiles.length
+) {
+  setGenerationError(
+    "Nie udało się przygotować danych wybranego materiału."
+  );
+  return;
+}
 
   setIsGenerating(true);
 
@@ -177,8 +199,23 @@ async function handleGenerate() {
         profiles:
           selectedProfiles,
       });
+    
+      setGenerationOutput({
+  result,
 
-    setGenerationResult(result);
+  materialType: {
+    value: selectedMaterialTypeOption.value,
+    label: selectedMaterialTypeOption.label,
+  },
+
+  profiles: selectedProfileOptions.map(
+    ({ value, label }) => ({
+      value,
+      label,
+    })
+  ),
+});
+
   } catch (error) {
     setGenerationError(
       error instanceof Error
@@ -531,7 +568,7 @@ const canGenerate =
 
 
 <GeneratedMaterial
-  generationResult={generationResult}
+  generationOutput={generationOutput}
 />
           </div>
         </section>

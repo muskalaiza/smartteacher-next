@@ -34,3 +34,340 @@
     font-family: ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji" !important;
   }
 }
+/* =========================
+   WYDRUK / ZAPIS DO PDF
+========================= */
+
+@media print {
+  @page {
+    size: A4;
+    margin: 8mm;
+  }
+
+  html,
+  body {
+    width: 100%;
+    min-height: auto;
+    margin: 0;
+    padding: 0;
+    overflow: visible;
+    background: #ffffff !important;
+    color: #000000 !important;
+  }
+
+  /*
+    Ukrywamy aplikację, ale pozostawiamy w układzie
+    wyłącznie obszar materiałów ucznia.
+  */
+  body * {
+    visibility: hidden !important;
+  }
+
+  .print-materials,
+  .print-materials * {
+    visibility: visible !important;
+  }
+
+  .print-materials {
+    position: absolute !important;
+    top: 0 !important;
+    left: 0 !important;
+
+    display: block !important;
+    width: 100% !important;
+    max-width: none !important;
+
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  .print-materials,
+  .print-materials * {
+    box-shadow: none !important;
+    text-shadow: none !important;
+    color: #000000 !important;
+  }
+
+  /* =========================
+     JEDEN DOKUMENT PROFILU
+  ========================= */
+
+  .print-student-material {
+    display: block !important;
+    width: 100% !important;
+    max-width: none !important;
+
+    margin: 0 !important;
+    padding: 0 !important;
+
+    border: 0 !important;
+    border-radius: 0 !important;
+
+    background: #ffffff !important;
+
+    font-size: 9pt !important;
+    line-height: 1.18 !important;
+
+    break-after: page;
+    page-break-after: always;
+  }
+
+  .print-student-material:last-child {
+    break-after: auto;
+    page-break-after: auto;
+  }
+
+  /* =========================
+     NAGŁÓWEK MATERIAŁU
+  ========================= */
+
+  .print-student-material header {
+    margin: 0 0 3mm !important;
+    padding: 0 0 2.5mm !important;
+
+    border-bottom: 1px solid #777777 !important;
+  }
+
+  .print-student-material header > * {
+    margin-block-start: 0 !important;
+    margin-block-end: 0 !important;
+  }
+
+  .print-student-material header h3 {
+    margin: 0 0 2mm !important;
+
+    font-size: 13pt !important;
+    line-height: 1.1 !important;
+    letter-spacing: 0 !important;
+  }
+
+  .print-student-material header p {
+    margin: 1.2mm 0 !important;
+
+    font-size: 9pt !important;
+    line-height: 1.15 !important;
+  }
+
+  .print-student-material header .grid {
+    display: grid !important;
+    grid-template-columns: repeat(
+      4,
+      minmax(0, 1fr)
+    ) !important;
+
+    gap: 2mm 4mm !important;
+    margin: 1.5mm 0 !important;
+  }
+
+  .print-student-material header .flex {
+    gap: 1.5mm !important;
+  }
+
+  .print-student-material header span {
+    font-size: 9pt !important;
+  }
+
+  /* =========================
+     SEKCJA ZADAŃ
+  ========================= */
+
+  .print-student-material > section {
+    margin: 0 !important;
+  }
+
+  .print-student-material > section > h4 {
+    margin: 0 0 2mm !important;
+
+    font-size: 11pt !important;
+    line-height: 1.15 !important;
+  }
+
+  .print-student-material ol {
+    display: block !important;
+
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  /*
+    Nie blokujemy dzielenia całego zadania.
+    Dzięki temu duże zadanie nie przenosi się
+    automatycznie na kolejną stronę.
+  */
+  .print-task {
+    margin: 0 !important;
+    padding: 2mm 0 !important;
+
+    border: 0 !important;
+    border-bottom: 1px solid #d4d4d8 !important;
+    border-radius: 0 !important;
+
+    background: #ffffff !important;
+
+    break-inside: auto !important;
+    page-break-inside: auto !important;
+  }
+
+  .print-task:last-child {
+    border-bottom: 0 !important;
+  }
+
+  /*
+    Etykieta „Zadanie X” pozostaje razem
+    z początkiem treści zadania.
+  */
+  .print-task > p:first-child {
+    margin: 0 0 1mm !important;
+
+    font-size: 8.5pt !important;
+    line-height: 1.1 !important;
+
+    break-after: avoid-page;
+    page-break-after: avoid;
+  }
+
+  .print-task > div {
+    margin-top: 1mm !important;
+  }
+
+  .print-task p {
+    margin: 0 !important;
+
+    font-size: 9pt !important;
+    line-height: 1.18 !important;
+  }
+
+  /*
+    Usuwamy duże odstępy Tailwind space-y-*
+    tylko wewnątrz drukowanych zadań.
+  */
+  .print-task [class*="space-y-"] > * {
+    margin-block-start: 0 !important;
+    margin-block-end: 0 !important;
+  }
+
+  .print-task [class*="space-y-"] > * + * {
+    margin-top: 1.2mm !important;
+  }
+
+  /* =========================
+     ODPOWIEDZI I PODPOWIEDZI
+  ========================= */
+
+  .print-task ul {
+    margin: 1mm 0 0 !important;
+    padding: 0 !important;
+  }
+
+  .print-task ul > li {
+    margin: 0 !important;
+    padding: 0.7mm 0 !important;
+
+    border: 0 !important;
+    border-radius: 0 !important;
+
+    background: transparent !important;
+
+    font-size: 9pt !important;
+    line-height: 1.15 !important;
+  }
+
+  /*
+    match_pair i match_fill pozostają
+    w dwóch kompaktowych kolumnach.
+  */
+  .print-task .grid {
+    display: grid !important;
+    grid-template-columns: repeat(
+      2,
+      minmax(0, 1fr)
+    ) !important;
+
+    gap: 1.5mm 5mm !important;
+
+    break-inside: avoid-page;
+    page-break-inside: avoid;
+  }
+
+  /*
+    Prawda / Fałsz pozostają małymi,
+    czytelnymi polami wyboru.
+  */
+  .print-task .flex.flex-wrap {
+    gap: 2mm !important;
+    margin-top: 1mm !important;
+  }
+
+  .print-task .flex.flex-wrap > span {
+    padding: 0.8mm 3mm !important;
+
+    border: 1px solid #999999 !important;
+    border-radius: 1.5mm !important;
+
+    background: #ffffff !important;
+
+    font-size: 9pt !important;
+  }
+
+  /* =========================
+     KOD
+  ========================= */
+
+  .print-task pre {
+    margin: 1mm 0 !important;
+    padding: 1.5mm 2mm !important;
+
+    overflow: visible !important;
+    white-space: pre-wrap !important;
+
+    border: 1px solid #aaaaaa !important;
+    border-radius: 1.5mm !important;
+
+    background: #f7f7f7 !important;
+
+    font-size: 8.5pt !important;
+    line-height: 1.15 !important;
+
+    break-inside: avoid-page;
+    page-break-inside: avoid;
+  }
+
+  /* =========================
+     MIEJSCA NA ODPOWIEDŹ
+  ========================= */
+
+  /*
+    error_find — poprawiony fragment kodu
+  */
+  .print-student-material .min-h-40 {
+    min-height: 18mm !important;
+  }
+
+  /*
+    open_code — całe rozwiązanie
+  */
+  .print-student-material .min-h-64 {
+    min-height: 32mm !important;
+  }
+
+  /*
+    open_explain — odpowiedź opisowa
+  */
+  .print-student-material .min-h-32 {
+    min-height: 18mm !important;
+  }
+
+  .print-student-material .border-dashed {
+    border: 1px dashed #999999 !important;
+    border-radius: 1.5mm !important;
+
+    background: #ffffff !important;
+  }
+
+  .print-hidden,
+  .print\:hidden {
+    display: none !important;
+  }
+}
+
+

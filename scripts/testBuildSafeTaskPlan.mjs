@@ -4,172 +4,334 @@ import {
   buildSafeTaskPlan,
 } from "../lib/generation/buildSafeTaskPlan.js"
 
-const TASK_SUBTYPES = [
-  "closed_single",
-  "closed_tf",
-  "match_fill",
-  "match_pair",
-  "error_find",
-  "open_code",
-  "open_explain",
-]
-
-function createAssessments(
-  supportOverrides = {}
-) {
-  return Object.fromEntries(
-    TASK_SUBTYPES.map((taskSubtype) => {
-      const isSupported =
-        supportOverrides[taskSubtype] ??
-        true
-
-      return [
-        taskSubtype,
-        {
-          isSupported,
-
-          evidenceChunkIds:
-            isSupported
-              ? ["chunk-test-1"]
-              : [],
-
-          evidenceSummary:
-            isSupported
-              ? "Źródło zawiera wystarczające dane."
-              : "Źródło nie zawiera wystarczających danych.",
-
-          missingEvidence:
-            isSupported
-              ? []
-              : [
-                  "Brak danych potrzebnych do przygotowania zadania.",
-                ],
-
-          constraints: [],
-        },
-      ]
-    })
-  )
-}
-
-function testReadyPlan() {
-  const assessments =
-    createAssessments()
-
-  const assessmentsBefore =
-    JSON.stringify(assessments)
-
-  const result = buildSafeTaskPlan({
-    assessments,
-    materialType: "kartkówka",
-    taskCount: "5",
-  })
-
-  assert.deepEqual(result, {
-    status: "ready",
-
-    taskPlan: [
-      {
-        number: 1,
-        taskSubtype:
-          "closed_single",
-      },
-      {
-        number: 2,
-        taskSubtype:
-          "closed_tf",
-      },
-      {
-        number: 3,
-        taskSubtype:
-          "match_pair",
-      },
-      {
-        number: 4,
-        taskSubtype:
-          "match_fill",
-      },
-      {
-        number: 5,
-        taskSubtype:
-          "error_find",
-      },
+const EXPECTED_TASK_TYPES = {
+  "karta pracy": {
+    5: [
+      "closed_single",
+      "match_pair",
+      "match_fill",
+      "error_find",
+      "open_explain",
     ],
 
-    unsupportedTaskSubtypes: [],
-  })
-
-  assert.equal(
-    JSON.stringify(assessments),
-    assessmentsBefore,
-    "buildSafeTaskPlan zmodyfikował wejściowe assessments."
-  )
-
-  console.log(
-    "1. Plan ready dla kartkówki i taskCount=\"5\": OK"
-  )
-}
-
-function testInsufficientCoverage() {
-  const assessments =
-    createAssessments({
-      closed_tf: false,
-    })
-
-  const result = buildSafeTaskPlan({
-    assessments,
-    materialType: "kartkówka",
-    taskCount: 5,
-  })
-
-  assert.deepEqual(result, {
-    status:
-      "insufficient_coverage",
-
-    taskPlan: [],
-
-    unsupportedTaskSubtypes: [
-      "closed_tf",
-    ],
-  })
-
-  console.log(
-    "2. Odrzucenie nieobsługiwanego typu: OK"
-  )
-}
-
-function testDuplicateUnsupportedType() {
-  const assessments =
-    createAssessments({
-      open_code: false,
-    })
-
-  const result = buildSafeTaskPlan({
-    assessments,
-    materialType: "kartkówka",
-    taskCount: 7,
-  })
-
-  assert.deepEqual(result, {
-    status:
-      "insufficient_coverage",
-
-    taskPlan: [],
-
-    unsupportedTaskSubtypes: [
+    6: [
+      "closed_single",
+      "match_pair",
+      "match_fill",
+      "error_find",
+      "open_explain",
       "open_code",
     ],
-  })
+
+    7: [
+      "closed_single",
+      "match_pair",
+      "match_fill",
+      "error_find",
+      "open_explain",
+      "open_code",
+      "open_explain",
+    ],
+  },
+
+  kartkówka: {
+    5: [
+      "closed_single",
+      "closed_tf",
+      "match_pair",
+      "match_fill",
+      "error_find",
+    ],
+
+    6: [
+      "error_find",
+      "closed_single",
+      "match_pair",
+      "match_fill",
+      "open_explain",
+      "open_code",
+    ],
+
+    7: [
+      "open_explain",
+      "open_code",
+      "error_find",
+      "match_fill",
+      "match_pair",
+      "open_code",
+      "open_explain",
+    ],
+  },
+
+  sprawdzian: {
+    5: [
+      "closed_single",
+      "closed_tf",
+      "match_fill",
+      "match_pair",
+      "error_find",
+    ],
+
+    6: [
+      "error_find",
+      "closed_single",
+      "match_pair",
+      "match_fill",
+      "open_explain",
+      "open_code",
+    ],
+
+    7: [
+      "error_find",
+      "match_pair",
+      "match_fill",
+      "open_explain",
+      "open_code",
+      "open_explain",
+      "open_code",
+    ],
+  },
+}
+
+function createExpectedResult(
+  taskSubtypes
+) {
+  return {
+    status: "ready",
+
+    taskPlan:
+      taskSubtypes.map(
+        (
+          taskSubtype,
+          index
+        ) => ({
+          number:
+            index + 1,
+
+          taskSubtype,
+        })
+      ),
+
+    unsupportedTaskSubtypes: [],
+  }
+}
+
+function testAllTemplatePlans() {
+  let testedPlanCount = 0
+
+  for (
+    const [
+      materialType,
+      plansByTaskCount,
+    ] of Object.entries(
+      EXPECTED_TASK_TYPES
+    )
+  ) {
+    for (
+      const [
+        taskCount,
+        expectedTaskTypes,
+      ] of Object.entries(
+        plansByTaskCount
+      )
+    ) {
+      const normalizedTaskCount =
+        Number(taskCount)
+
+      const result =
+        buildSafeTaskPlan({
+          materialType,
+          taskCount:
+            normalizedTaskCount,
+        })
+
+      assert.deepEqual(
+        result,
+        createExpectedResult(
+          expectedTaskTypes
+        ),
+        `Nieprawidłowy plan: ${materialType}, ${taskCount} zadań.`
+      )
+
+      testedPlanCount += 1
+
+      console.log(
+        `${testedPlanCount}. ${materialType}, ${taskCount} zadań: OK`
+      )
+    }
+  }
+
+  assert.equal(
+    testedPlanCount,
+    9,
+    "Test powinien sprawdzić 9 kombinacji materiału i liczby zadań."
+  )
+}
+
+function testInputNormalization() {
+  const result =
+    buildSafeTaskPlan({
+      materialType:
+        "  KARTKÓWKA  ",
+
+      taskCount:
+        "7",
+    })
+
+  assert.deepEqual(
+    result,
+    createExpectedResult(
+      EXPECTED_TASK_TYPES
+        .kartkówka[7]
+    )
+  )
 
   console.log(
-    "3. Brak duplikatów na liście nieobsługiwanych typów: OK"
+    "10. Normalizacja materialType i taskCount=\"7\": OK"
+  )
+}
+
+function testCoverageDoesNotAffectPlan() {
+  const result =
+    buildSafeTaskPlan({
+      materialType:
+        "kartkówka",
+
+      taskCount:
+        7,
+
+      /*
+        Stare dane coverage są przekazane
+        celowo.
+
+        buildSafeTaskPlan nie może już
+        korzystać z assessments ani
+        isSupported.
+      */
+      assessments: {
+        open_code: {
+          isSupported: false,
+        },
+
+        open_explain: {
+          isSupported: false,
+        },
+
+        error_find: {
+          isSupported: false,
+        },
+      },
+    })
+
+  assert.deepEqual(
+    result,
+    createExpectedResult(
+      EXPECTED_TASK_TYPES
+        .kartkówka[7]
+    )
+  )
+
+  console.log(
+    "11. assessments i isSupported nie wpływają na plan 7 zadań: OK"
+  )
+}
+
+function testRepeatedTaskTypesArePreserved() {
+  const result =
+    buildSafeTaskPlan({
+      materialType:
+        "sprawdzian",
+
+      taskCount:
+        7,
+    })
+
+  const taskSubtypes =
+    result.taskPlan.map(
+      (task) =>
+        task.taskSubtype
+    )
+
+  assert.equal(
+    taskSubtypes.filter(
+      (taskSubtype) =>
+        taskSubtype ===
+        "open_explain"
+    ).length,
+    2,
+    "Plan sprawdzianu powinien zachować dwa zadania open_explain."
+  )
+
+  assert.equal(
+    taskSubtypes.filter(
+      (taskSubtype) =>
+        taskSubtype ===
+        "open_code"
+    ).length,
+    2,
+    "Plan sprawdzianu powinien zachować dwa zadania open_code."
+  )
+
+  console.log(
+    "12. Powtarzające się typy w planie 7 zadań: OK"
+  )
+}
+
+function testInvalidTaskCount() {
+  assert.throws(
+    () =>
+      buildSafeTaskPlan({
+        materialType:
+          "kartkówka",
+
+        taskCount:
+          4,
+      }),
+    /Dozwolone wartości: 5, 6, 7/
+  )
+
+  assert.throws(
+    () =>
+      buildSafeTaskPlan({
+        materialType:
+          "kartkówka",
+
+        taskCount:
+          8,
+      }),
+    /Dozwolone wartości: 5, 6, 7/
+  )
+
+  console.log(
+    "13. Odrzucenie taskCount spoza 5, 6, 7: OK"
+  )
+}
+
+function testInvalidMaterialType() {
+  assert.throws(
+    () =>
+      buildSafeTaskPlan({
+        materialType:
+          "nieznany materiał",
+
+        taskCount:
+          7,
+      }),
+    /Nieobsługiwany typ materiału/
+  )
+
+  console.log(
+    "14. Odrzucenie nieobsługiwanego typu materiału: OK"
   )
 }
 
 function main() {
-  testReadyPlan()
-  testInsufficientCoverage()
-  testDuplicateUnsupportedType()
+  testAllTemplatePlans()
+  testInputNormalization()
+  testCoverageDoesNotAffectPlan()
+  testRepeatedTaskTypesArePreserved()
+  testInvalidTaskCount()
+  testInvalidMaterialType()
 
   console.log(
     "\nTEST BUILD SAFE TASK PLAN: OK"

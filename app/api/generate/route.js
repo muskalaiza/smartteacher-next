@@ -477,28 +477,27 @@ export async function POST(request) {
       model Generatora i parser.
     */
 
-    const generationResult =
-      await generateMaterialFromContext({
-        topic:
-          lessonTopic
-            .display_title,
+   const generationResult =
+  await generateMaterialFromContext({
+    topicTitle:
+      lessonTopic
+        .display_title,
 
-        type:
-          materialType,
+    materialType,
 
-        profiles,
+    profiles,
 
-        taskPlan:
-          taskPlanResult
-            .taskPlan,
+    taskPlan:
+      taskPlanResult
+        .taskPlan,
 
-        ragContext:
-          sourceContext
-            .ragContext,
+    sourceContext:
+      sourceContext
+        .ragContext,
 
-        model:
-          GENERATOR_MODEL,
-      })
+    model:
+      GENERATOR_MODEL,
+  })
 
     /*
       13. Odpowiedź dla klienta UI.

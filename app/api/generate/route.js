@@ -27,6 +27,9 @@ import {
 
 export const runtime = "nodejs"
 
+const GENERATOR_MODEL =
+  "gpt-4o-mini"
+
 const ALLOWED_PROFILES = new Set([
   "Standard",
   "ASD",
@@ -473,7 +476,8 @@ export async function POST(request) {
       12. Structured Outputs,
       model Generatora i parser.
     */
-    const generatedMaterial =
+
+    const generationResult =
       await generateMaterialFromContext({
         topic:
           lessonTopic
@@ -491,6 +495,9 @@ export async function POST(request) {
         ragContext:
           sourceContext
             .ragContext,
+
+        model:
+          GENERATOR_MODEL,
       })
 
     /*
@@ -522,7 +529,8 @@ export async function POST(request) {
           .taskPlan,
 
       material:
-        generatedMaterial,
+        generationResult
+          .material,
 
       coverage: {
         cacheStatus:

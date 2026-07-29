@@ -6,29 +6,38 @@ import {
 } from "@/lib/api/serverApiHelpers"
 
 import {
-  searchPrivateLessonTopicChunks,
-} from "@/lib/privateRag/searchPrivateLessonTopicChunks"
+  buildGenerationIdentity,
+} from "@/lib/generation/buildGenerationIdentity"
 
 import {
-  buildPrivateRagContext,
-} from "@/lib/privateRag/buildPrivateRagContext"
+  buildTaskPlan,
+} from "@/lib/generation/buildTaskPlan"
 
 import {
-  getOrAssessPrivateRagTaskTypeCoverage,
-} from "@/lib/privateRag/getOrAssessPrivateRagTaskTypeCoverage"
-
-import {
-  buildSafeTaskPlan,
-} from "@/lib/generation/buildSafeTaskPlan"
+  claimGeneratedMaterial,
+  markGeneratedMaterialFailed,
+  markGeneratedMaterialReady,
+} from "@/lib/generation/generatedMaterialsCache"
 
 import {
   generateMaterialFromContext,
 } from "@/lib/generation/generateMaterialFromContext"
 
+import {
+  getLessonTopicSourceContext,
+  LessonTopicSourceNotFoundError,
+} from "@/lib/generation/getLessonTopicSourceContext"
+
 export const runtime = "nodejs"
 
 const GENERATOR_MODEL =
   "gpt-4o-mini"
+
+const GENERATOR_VERSION =
+  "generator_v1"
+
+const CONTENT_SCHEMA_VERSION =
+  "material_schema_v1"
 
 const ALLOWED_PROFILES = new Set([
   "Standard",
@@ -45,26 +54,32 @@ const ALLOWED_REQUEST_FIELDS = new Set([
   "profiles",
 ])
 
-function validateProfiles(profiles) {
+function validateProfiles(
+  profiles
+) {
   if (
     !Array.isArray(profiles) ||
     profiles.length === 0 ||
-    profiles.length > ALLOWED_PROFILES.size
+    profiles.length >
+      ALLOWED_PROFILES.size
   ) {
     return false
   }
 
   if (
     new Set(profiles).size !==
-    profiles.length
+      profiles.length
   ) {
     return false
   }
 
   return profiles.every(
     (profile) =>
-      typeof profile === "string" &&
-      ALLOWED_PROFILES.has(profile)
+      typeof profile ===
+        "string" &&
+      ALLOWED_PROFILES.has(
+        profile
+      )
   )
 }
 
@@ -76,21 +91,22 @@ async function getOwnedLessonTopic({
   const {
     data: lessonTopic,
     error: lessonTopicError,
-  } = await supabaseAdmin
-    .from("lesson_topics")
-    .select(
-      [
+  } =
+    await supabaseAdmin
+      .from("lesson_topics")
+      .select(
+        [
+          "id",
+          "catalog_id",
+          "display_title",
+          "lesson_key",
+        ].join(", ")
+      )
+      .eq(
         "id",
-        "catalog_id",
-        "display_title",
-        "lesson_key",
-      ].join(", ")
-    )
-    .eq(
-      "id",
-      lessonTopicId
-    )
-    .maybeSingle()
+        lessonTopicId
+      )
+      .maybeSingle()
 
   if (lessonTopicError) {
     throw new Error(
@@ -105,29 +121,30 @@ async function getOwnedLessonTopic({
   const {
     data: lessonCatalog,
     error: lessonCatalogError,
-  } = await supabaseAdmin
-    .from("lesson_catalogs")
-    .select(
-      [
+  } =
+    await supabaseAdmin
+      .from("lesson_catalogs")
+      .select(
+        [
+          "id",
+          "owner_id",
+          "subject_id",
+          "source_type",
+        ].join(", ")
+      )
+      .eq(
         "id",
+        lessonTopic.catalog_id
+      )
+      .eq(
         "owner_id",
-        "subject_id",
+        ownerId
+      )
+      .eq(
         "source_type",
-      ].join(", ")
-    )
-    .eq(
-      "id",
-      lessonTopic.catalog_id
-    )
-    .eq(
-      "owner_id",
-      ownerId
-    )
-    .eq(
-      "source_type",
-      "teacher_private"
-    )
-    .maybeSingle()
+        "teacher_private"
+      )
+      .maybeSingle()
 
   if (lessonCatalogError) {
     throw new Error(
@@ -139,19 +156,146 @@ async function getOwnedLessonTopic({
     return null
   }
 
+  const {
+    data: subject,
+    error: subjectError,
+  } =
+    await supabaseAdmin
+      .from("subjects")
+      .select(
+        [
+          "id",
+          "name",
+        ].join(", ")
+      )
+      .eq(
+        "id",
+        lessonCatalog.subject_id
+      )
+      .maybeSingle()
+
+  if (subjectError) {
+    throw new Error(
+      `Nie udało się pobrać przedmiotu: ${subjectError.message}`
+    )
+  }
+
+  if (!subject) {
+    throw new Error(
+      "Katalog lekcji wskazuje na nieistniejący przedmiot."
+    )
+  }
+
   return {
     lessonTopic,
     lessonCatalog,
+    subject,
   }
 }
 
-export async function POST(request) {
+function buildGeneratedResponse({
+  lessonTopic,
+  generationManifest,
+  generationFingerprint,
+  sourceResult,
+  material,
+  usage,
+  cacheStatus,
+  generatedMaterialId,
+  accessCount,
+}) {
+  return {
+    success: true,
+    status: "generated",
+
+    lessonTopic: {
+      id:
+        lessonTopic.id,
+
+      displayTitle:
+        lessonTopic
+          .display_title,
+
+      lessonKey:
+        lessonTopic
+          .lesson_key,
+    },
+
+    materialType:
+      generationManifest
+        .materialType,
+
+    taskCount:
+      generationManifest
+        .taskCount,
+
+    profiles:
+      generationManifest
+        .profiles,
+
+    taskPlan:
+      generationManifest
+        .taskPlan,
+
+    material,
+
+    cache: {
+      status:
+        cacheStatus,
+
+      generatedMaterialId,
+
+      accessCount,
+    },
+
+    source: {
+      documentId:
+        sourceResult
+          .documentId,
+
+      fileName:
+        sourceResult
+          .sourceFilename,
+
+      chunkCount:
+        sourceResult
+          .chunkCount,
+
+      sourceFingerprint:
+        sourceResult
+          .sourceFingerprint,
+
+      sourceManifestVersion:
+        sourceResult
+          .sourceManifestVersion,
+    },
+
+    generation: {
+      generationFingerprint,
+
+      generatorVersion:
+        generationManifest
+          .generatorVersion,
+
+      contentSchemaVersion:
+        generationManifest
+          .contentSchemaVersion,
+
+      model:
+        generationManifest
+          .model,
+
+      usage,
+    },
+  }
+}
+
+export async function POST(
+  request
+) {
   try {
     /*
       1. Weryfikacja sesji użytkownika.
-
-      user.id pochodzi wyłącznie ze zweryfikowanego
-      tokenu Supabase Auth.
     */
     const authContext =
       await getAuthenticatedRouteContext(
@@ -174,8 +318,7 @@ export async function POST(request) {
     } = authContext
 
     /*
-      2. Odczyt i kontrola JSON przesłanego
-      przez formularz Generatora.
+      2. Odczyt i kontrola JSON.
     */
     let requestBody
 
@@ -194,8 +337,11 @@ export async function POST(request) {
 
     if (
       !requestBody ||
-      typeof requestBody !== "object" ||
-      Array.isArray(requestBody)
+      typeof requestBody !==
+        "object" ||
+      Array.isArray(
+        requestBody
+      )
     ) {
       return jsonResponse(
         {
@@ -231,7 +377,8 @@ export async function POST(request) {
     */
     const lessonTopicId =
       typeof requestBody
-        .lessonTopicId === "string"
+        .lessonTopicId ===
+        "string"
         ? requestBody
             .lessonTopicId
             .trim()
@@ -248,12 +395,13 @@ export async function POST(request) {
     }
 
     /*
-      4. Pierwszy pionowy przepływ obsługuje
-      wyłącznie kartkówkę z jednego tematu.
+      4. Aktualny pionowy przepływ
+      obsługuje kartkówkę.
     */
     const materialType =
       typeof requestBody
-        .materialType === "string"
+        .materialType ===
+        "string"
         ? requestBody
             .materialType
             .trim()
@@ -296,7 +444,7 @@ export async function POST(request) {
     }
 
     /*
-      6. Walidacja profili uczniów.
+      6. Walidacja profili.
     */
     const profiles =
       requestBody.profiles
@@ -316,17 +464,16 @@ export async function POST(request) {
     }
 
     /*
-      7. Sprawdzenie, czy temat pochodzi
-      z prywatnego katalogu zalogowanego nauczyciela.
-
-      lessonTopicId pochodzi z body,
-      ale ownerId zawsze ze zweryfikowanego tokenu.
+      7. Kontrola prywatnego tematu,
+      katalogu i przedmiotu.
     */
     const ownedContext =
       await getOwnedLessonTopic({
         supabaseAdmin,
+
         ownerId:
           user.id,
+
         lessonTopicId,
       })
 
@@ -343,17 +490,14 @@ export async function POST(request) {
     const {
       lessonTopic,
       lessonCatalog,
+      subject,
     } = ownedContext
 
-    const query =
-      `Wyjaśnij najważniejsze informacje, definicje, zasady, składnię, przykłady i typowe błędy dotyczące tematu: ${lessonTopic.display_title}.`
-
     /*
-      8. Semantic retrieval prywatnych źródeł
-      dla właściciela, przedmiotu i tematu.
+      8. Pełny, zweryfikowany dokument.
     */
-    const retrievalResult =
-      await searchPrivateLessonTopicChunks({
+    const sourceResult =
+      await getLessonTopicSourceContext({
         supabaseAdmin,
 
         ownerId:
@@ -365,13 +509,321 @@ export async function POST(request) {
 
         lessonTopicId:
           lessonTopic.id,
-
-        query,
       })
 
+    /*
+      9. Deterministyczny plan
+      z templates.js.
+    */
+    const taskPlan =
+      buildTaskPlan({
+        materialType,
+        taskCount,
+      })
+
+    /*
+      10. Kanoniczna tożsamość
+      generowania.
+    */
+    const {
+      generationFingerprint,
+      generationManifest,
+    } =
+      buildGenerationIdentity({
+        sourceFingerprint:
+          sourceResult
+            .sourceFingerprint,
+
+        lessonTopicId:
+          lessonTopic.id,
+
+        topicTitle:
+          lessonTopic
+            .display_title,
+
+        materialType,
+        taskCount,
+        profiles,
+        taskPlan,
+
+        generatorVersion:
+          GENERATOR_VERSION,
+
+        contentSchemaVersion:
+          CONTENT_SCHEMA_VERSION,
+
+        model:
+          GENERATOR_MODEL,
+      })
+
+    /*
+      11. Atomowa decyzja:
+      HIT / MISS / in progress.
+    */
+    const cacheClaim =
+      await claimGeneratedMaterial({
+        supabaseAdmin,
+
+        claimData: {
+          ownerId:
+            user.id,
+
+          subjectId:
+            lessonCatalog
+              .subject_id,
+
+          lessonTopicId:
+            generationManifest
+              .lessonTopicId,
+
+          sourceDocumentId:
+            sourceResult
+              .documentId,
+
+          subjectNameSnapshot:
+            subject
+              .name,
+
+          topicTitleSnapshot:
+            generationManifest
+              .topicTitle,
+
+          sourceFileNameSnapshot:
+            sourceResult
+              .sourceFilename,
+
+          materialType:
+            generationManifest
+              .materialType,
+
+          taskCount:
+            generationManifest
+              .taskCount,
+
+          profiles:
+            generationManifest
+              .profiles,
+
+          taskPlan:
+            generationManifest
+              .taskPlan,
+
+          sourceFingerprint:
+            generationManifest
+              .sourceFingerprint,
+
+          sourceManifestVersion:
+            sourceResult
+              .sourceManifestVersion,
+
+          generationFingerprint,
+
+          generatorVersion:
+            generationManifest
+              .generatorVersion,
+
+          contentSchemaVersion:
+            generationManifest
+              .contentSchemaVersion,
+
+          model:
+            generationManifest
+              .model,
+        },
+      })
+
+    /*
+      12A. Cache HIT:
+      bez wywołania modelu.
+    */
     if (
-      retrievalResult.status ===
-        "no_sources"
+      cacheClaim.state ===
+        "hit"
+    ) {
+      return jsonResponse(
+        buildGeneratedResponse({
+          lessonTopic,
+          generationManifest,
+          generationFingerprint,
+          sourceResult,
+
+          material:
+            cacheClaim.material,
+
+          usage: {
+            promptTokens: 0,
+            completionTokens: 0,
+            totalTokens: 0,
+          },
+
+          cacheStatus:
+            "hit",
+
+          generatedMaterialId:
+            cacheClaim
+              .generatedMaterialId,
+
+          accessCount:
+            cacheClaim
+              .accessCount,
+        })
+      )
+    }
+
+    /*
+      12B. Inne żądanie generuje
+      identyczny materiał.
+    */
+    if (
+      cacheClaim.state ===
+        "in_progress"
+    ) {
+      return jsonResponse(
+        {
+          status:
+            "generation_in_progress",
+
+          error:
+            "Identyczny materiał jest już generowany. Spróbuj ponownie za chwilę.",
+
+          generationFingerprint,
+        },
+        409
+      )
+    }
+
+    if (
+      cacheClaim.state !==
+        "reserved"
+    ) {
+      throw new Error(
+        `Nieobsługiwany stan cache: ${cacheClaim.state}.`
+      )
+    }
+
+    /*
+      12C. Cache MISS:
+      dokładnie jedno wywołanie modelu.
+    */
+    try {
+      const generationResult =
+        await generateMaterialFromContext({
+          topicTitle:
+            generationManifest
+              .topicTitle,
+
+          materialType:
+            generationManifest
+              .materialType,
+
+          profiles:
+            generationManifest
+              .profiles,
+
+          taskPlan:
+            generationManifest
+              .taskPlan,
+
+          sourceContext:
+            sourceResult
+              .sourceContext,
+
+          model:
+            generationManifest
+              .model,
+        })
+
+      const readyRecord =
+        await markGeneratedMaterialReady({
+          supabaseAdmin,
+
+          ownerId:
+            user.id,
+
+          generatedMaterialId:
+            cacheClaim
+              .generatedMaterialId,
+
+          reservationStartedAt:
+            cacheClaim
+              .startedAt,
+
+          material:
+            generationResult
+              .material,
+
+          usage:
+            generationResult
+              .usage,
+        })
+
+      return jsonResponse(
+        buildGeneratedResponse({
+          lessonTopic,
+          generationManifest,
+          generationFingerprint,
+          sourceResult,
+
+          material:
+            readyRecord
+              .material,
+
+          usage:
+            generationResult
+              .usage,
+
+          cacheStatus:
+            "miss",
+
+          generatedMaterialId:
+            readyRecord
+              .generatedMaterialId,
+
+          accessCount:
+            readyRecord
+              .accessCount,
+        })
+      )
+    } catch (
+      generationError
+    ) {
+      try {
+        await markGeneratedMaterialFailed({
+          supabaseAdmin,
+
+          ownerId:
+            user.id,
+
+          generatedMaterialId:
+            cacheClaim
+              .generatedMaterialId,
+
+          reservationStartedAt:
+            cacheClaim
+              .startedAt,
+
+          errorMessage:
+            getErrorMessage(
+              generationError
+            ),
+        })
+      } catch (
+        cacheFailureError
+      ) {
+        console.error(
+          "Failed to persist Generator error:",
+          getErrorMessage(
+            cacheFailureError
+          )
+        )
+      }
+
+      throw generationError
+    }
+  } catch (error) {
+    if (
+      error instanceof
+        LessonTopicSourceNotFoundError
     ) {
       return jsonResponse(
         {
@@ -385,169 +837,6 @@ export async function POST(request) {
       )
     }
 
-    if (
-      retrievalResult.status ===
-        "insufficient_similarity"
-    ) {
-      return jsonResponse(
-        {
-          status:
-            "insufficient_similarity",
-
-          error:
-            "Nie znaleziono wystarczająco dopasowanych fragmentów materiału.",
-        },
-        422
-      )
-    }
-
-    if (
-      retrievalResult.status !==
-        "retrieved"
-    ) {
-      throw new Error(
-        `Nieobsługiwany status retrieval: ${retrievalResult.status}.`
-      )
-    }
-
-    /*
-      9. Zbudowanie gotowego sourceContext.
-    */
-    const sourceContext =
-      buildPrivateRagContext({
-        retrievalResult,
-      })
-
-    if (
-      sourceContext.status !==
-        "ready"
-    ) {
-      throw new Error(
-        `Nie udało się przygotować kontekstu źródłowego: ${sourceContext.status}.`
-      )
-    }
-
-    /*
-      10. Odczyt coverage z cache
-      albo jedno nowe wywołanie modelu.
-    */
-    const coverageResult =
-      await getOrAssessPrivateRagTaskTypeCoverage({
-        supabaseAdmin,
-        sourceContext,
-      })
-
-    /*
-      11. Utworzenie bezpiecznego taskPlan
-      wyłącznie z obsługiwanych typów zadań.
-    */
-    const taskPlanResult =
-      buildSafeTaskPlan({
-        assessments:
-          coverageResult
-            .assessments,
-
-        materialType,
-
-        taskCount,
-      })
-
-    if (
-      taskPlanResult.status ===
-        "insufficient_coverage"
-    ) {
-      return jsonResponse(
-        {
-          status:
-            "insufficient_coverage",
-
-          error:
-            "Źródła nie pozwalają przygotować wybranej liczby zadań.",
-
-          unsupportedTaskSubtypes:
-            taskPlanResult
-              .unsupportedTaskSubtypes,
-        },
-        422
-      )
-    }
-
-    /*
-      12. Structured Outputs,
-      model Generatora i parser.
-    */
-
-   const generationResult =
-  await generateMaterialFromContext({
-    topicTitle:
-      lessonTopic
-        .display_title,
-
-    materialType,
-
-    profiles,
-
-    taskPlan:
-      taskPlanResult
-        .taskPlan,
-
-    sourceContext:
-      sourceContext
-        .ragContext,
-
-    model:
-      GENERATOR_MODEL,
-  })
-
-    /*
-      13. Odpowiedź dla klienta UI.
-    */
-    return jsonResponse({
-      success: true,
-      status: "generated",
-
-      lessonTopic: {
-        id:
-          lessonTopic.id,
-
-        displayTitle:
-          lessonTopic
-            .display_title,
-
-        lessonKey:
-          lessonTopic
-            .lesson_key,
-      },
-
-      materialType,
-      taskCount,
-      profiles,
-
-      taskPlan:
-        taskPlanResult
-          .taskPlan,
-
-      material:
-        generationResult
-          .material,
-
-      coverage: {
-        cacheStatus:
-          coverageResult
-            .cacheStatus,
-
-        sourceCount:
-          sourceContext
-            .sourceCount,
-
-        newCoverageTokens:
-          coverageResult
-            .usage
-            ?.totalTokens ??
-          null,
-      },
-    })
-  } catch (error) {
     const errorMessage =
       getErrorMessage(error)
 
@@ -561,10 +850,6 @@ export async function POST(request) {
         "Nie udało się wygenerować materiału.",
     }
 
-    /*
-      Szczegóły techniczne są widoczne lokalnie,
-      ale nie na produkcji.
-    */
     if (
       process.env.NODE_ENV !==
         "production"
@@ -582,15 +867,20 @@ export async function POST(request) {
 
 /*
 autoryzacja
-→ odczyt request.json()
-→ kontrola dozwolonych pól
-→ walidacja lessonTopicId
-→ walidacja typu materiału
-→ walidacja liczby zadań
-→ walidacja profili
-→ kontrola właściciela tematu
-→ retrieval
-→ coverage/cache
-→ taskPlan
-→ generowanie
+→ walidacja requestu
+→ prywatny temat i przedmiot
+→ pełny dokument źródłowy
+→ taskPlan z templates.js
+→ generation fingerprint
+→ atomowy cache claim
+
+HIT
+→ gotowy content_json
+→ 0 nowych tokenów
+
+MISS
+→ jedno wywołanie Generatora
+→ Structured Outputs
+→ parser
+→ zapis ready albo failed
 */

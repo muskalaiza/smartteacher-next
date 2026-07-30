@@ -1,4 +1,7 @@
 import assert from "node:assert/strict"
+import {
+  randomUUID,
+} from "node:crypto"
 import process from "node:process"
 
 import {
@@ -6,30 +9,29 @@ import {
 } from "@supabase/supabase-js"
 
 import {
-  getOrAssessPrivateRagTaskTypeCoverage,
-} from "../lib/privateRag/getOrAssessPrivateRagTaskTypeCoverage.js"
+  buildGenerationIdentity,
+} from "../lib/generation/buildGenerationIdentity.js"
 
 import {
-  buildPrivateRagContext,
-} from "../lib/privateRag/buildPrivateRagContext.js"
+  buildTaskPlan,
+} from "../lib/generation/buildTaskPlan.js"
 
 import {
-  searchPrivateLessonTopicChunks,
-} from "../lib/privateRag/searchPrivateLessonTopicChunks.js"
-
-import {
-  buildSafeTaskPlan,
-} from "../lib/generation/buildSafeTaskPlan.js"
+  claimGeneratedMaterial,
+  markGeneratedMaterialFailed,
+  markGeneratedMaterialReady,
+} from "../lib/generation/generatedMaterialsCache.js"
 
 import {
   generateMaterialFromContext,
 } from "../lib/generation/generateMaterialFromContext.js"
 
-const TEST_DOCUMENT_NAME =
-  process.env
-    .PRIVATE_RAG_GENERATOR_DOCUMENT_NAME
-    ?.trim() ||
-  "petla_for_CPP.docx"
+import {
+  getLessonTopicSourceContext,
+} from "../lib/generation/getLessonTopicSourceContext.js"
+
+const DOCX_MIME_TYPE =
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 
 const MATERIAL_TYPE =
   "kartkówka"
@@ -40,10 +42,20 @@ const PROFILES = [
   "Standard",
 ]
 
+const GENERATOR_MODEL =
+  process.env
+    .PRIVATE_RAG_GENERATOR_MODEL
+    ?.trim() ||
+  "gpt-4o-mini"
+
+const CONTENT_SCHEMA_VERSION =
+  "material_schema_v1"
+
 function getRequiredEnvironmentVariable(
   name
 ) {
-  const value = process.env[name]
+  const value =
+    process.env[name]
 
   if (!value) {
     throw new Error(
@@ -56,8 +68,10 @@ function getRequiredEnvironmentVariable(
 
 function getServerSupabaseKey() {
   const key =
-    process.env.SUPABASE_SECRET_KEY ||
-    process.env.SUPABASE_SERVICE_ROLE_KEY
+    process.env
+      .SUPABASE_SECRET_KEY ||
+    process.env
+      .SUPABASE_SERVICE_ROLE_KEY
 
   if (!key) {
     throw new Error(
@@ -89,8 +103,8 @@ function createAdminClient() {
 async function getReferenceDocument(
   supabaseAdmin
 ) {
-  const { data, error } =
-    await supabaseAdmin
+  let query =
+    supabaseAdmin
       .from("teacher_documents")
       .select(
         [
@@ -100,26 +114,59 @@ async function getReferenceDocument(
           "lesson_topic_id",
           "original_file_name",
           "status",
-          "created_at",
+          "ready_at",
         ].join(", ")
       )
       .eq(
-        "original_file_name",
-        TEST_DOCUMENT_NAME
+        "mime_type",
+        DOCX_MIME_TYPE
       )
-      .eq(
+      .in(
         "status",
-        "embedded"
+        [
+          "chunked",
+          "embedded",
+          "ready",
+        ]
       )
       .not(
         "lesson_topic_id",
         "is",
         null
       )
+      .not(
+        "source_fingerprint",
+        "is",
+        null
+      )
+      .not(
+        "source_manifest_version",
+        "is",
+        null
+      )
+
+  const requestedDocumentName =
+    process.env
+      .PRIVATE_RAG_GENERATOR_DOCUMENT_NAME
+      ?.trim()
+
+  if (requestedDocumentName) {
+    query = query.eq(
+      "original_file_name",
+      requestedDocumentName
+    )
+  }
+
+  const {
+    data,
+    error,
+  } =
+    await query
       .order(
-        "created_at",
+        "ready_at",
         {
           ascending: false,
+          nullsFirst: false,
         }
       )
       .limit(1)
@@ -130,50 +177,82 @@ async function getReferenceDocument(
     )
   }
 
-  const document = data?.[0]
+  const document =
+    data?.[0]
 
   if (!document) {
     throw new Error(
-      `Nie znaleziono dokumentu embedded: ${TEST_DOCUMENT_NAME}.`
+      requestedDocumentName
+        ? `Nie znaleziono gotowego dokumentu DOCX: ${requestedDocumentName}.`
+        : "Nie znaleziono gotowego dokumentu DOCX przypisanego do tematu lekcji."
     )
   }
 
   return document
 }
 
-async function getLessonTopic({
+async function getReferenceMetadata({
   supabaseAdmin,
-  lessonTopicId,
+  document,
 }) {
-  const { data, error } =
-    await supabaseAdmin
+  const [
+    topicResult,
+    subjectResult,
+  ] = await Promise.all([
+    supabaseAdmin
       .from("lesson_topics")
       .select(
-        [
-          "id",
-          "display_title",
-          "lesson_key",
-        ].join(", ")
+        "id, display_title, lesson_key"
       )
       .eq(
         "id",
-        lessonTopicId
+        document.lesson_topic_id
       )
-      .maybeSingle()
+      .maybeSingle(),
 
-  if (error) {
+    supabaseAdmin
+      .from("subjects")
+      .select(
+        "id, name"
+      )
+      .eq(
+        "id",
+        document.subject_id
+      )
+      .maybeSingle(),
+  ])
+
+  if (topicResult.error) {
     throw new Error(
-      `Nie udało się pobrać tematu testowego: ${error.message}`
+      `Nie udało się pobrać tematu testowego: ${topicResult.error.message}`
     )
   }
 
-  if (!data) {
+  if (!topicResult.data) {
     throw new Error(
       "Nie znaleziono tematu testowego."
     )
   }
 
-  return data
+  if (subjectResult.error) {
+    throw new Error(
+      `Nie udało się pobrać przedmiotu testowego: ${subjectResult.error.message}`
+    )
+  }
+
+  if (!subjectResult.data) {
+    throw new Error(
+      "Nie znaleziono przedmiotu testowego."
+    )
+  }
+
+  return {
+    lessonTopic:
+      topicResult.data,
+
+    subject:
+      subjectResult.data,
+  }
 }
 
 function assertGeneratedMaterial({
@@ -187,7 +266,6 @@ function assertGeneratedMaterial({
       !Array.isArray(
         generatedMaterial
       ),
-
     "Generator nie zwrócił obiektu materiału."
   )
 
@@ -210,7 +288,6 @@ function assertGeneratedMaterial({
     Array.isArray(
       generatedMaterial.tasks
     ),
-
     "Wygenerowany materiał nie zawiera tablicy tasks."
   )
 
@@ -241,7 +318,6 @@ function assertGeneratedMaterial({
         typeof task.question ===
           "string" &&
           task.question.trim(),
-
         `Zadanie ${task.number} nie ma prawidłowej treści question.`
       )
 
@@ -254,16 +330,55 @@ function assertGeneratedMaterial({
   )
 }
 
+async function deleteTestRecord({
+  supabaseAdmin,
+  ownerId,
+  generatedMaterialId,
+}) {
+  if (!generatedMaterialId) {
+    return
+  }
+
+  const {
+    data,
+    error,
+  } =
+    await supabaseAdmin
+      .from("generated_materials")
+      .delete()
+      .eq(
+        "id",
+        generatedMaterialId
+      )
+      .eq(
+        "owner_id",
+        ownerId
+      )
+      .select("id")
+      .maybeSingle()
+
+  if (error) {
+    throw new Error(
+      `Nie udało się usunąć rekordu testowego generated_materials: ${error.message}`
+    )
+  }
+
+  if (
+    data?.id !==
+      generatedMaterialId
+  ) {
+    throw new Error(
+      "Nie potwierdzono usunięcia rekordu testowego generated_materials."
+    )
+  }
+}
+
 async function main() {
   if (!process.env.OPENAI_API_KEY) {
     throw new Error(
       "Brak OPENAI_API_KEY. Uruchom test z opcją --env-file=.env.local."
     )
   }
-
-  console.log(
-    "Uruchamiam integrację Private RAG → Generator..."
-  )
 
   const supabaseAdmin =
     createAdminClient()
@@ -273,19 +388,24 @@ async function main() {
       supabaseAdmin
     )
 
-  const lessonTopic =
-    await getLessonTopic({
+  const {
+    lessonTopic,
+    subject,
+  } =
+    await getReferenceMetadata({
       supabaseAdmin,
-
-      lessonTopicId:
-        document.lesson_topic_id,
+      document,
     })
 
-  const query =
-    process.env
-      .PRIVATE_RAG_GENERATOR_QUERY
-      ?.trim() ||
-    `Wyjaśnij najważniejsze informacje, definicje, zasady, składnię, przykłady i typowe błędy dotyczące tematu: ${lessonTopic.display_title}.`
+  const generatorVersion =
+    `generator_integration_test_${randomUUID()}`
+
+  let generatedMaterialId = null
+  let reservationStartedAt = null
+
+  console.log(
+    "Uruchamiam integrację pełne źródło → Generator → atomowy cache..."
+  )
 
   console.log(
     `Dokument: ${document.original_file_name}`
@@ -299,13 +419,117 @@ async function main() {
     `Materiał: ${MATERIAL_TYPE}, ${TASK_COUNT} zadań, profil Standard`
   )
 
-  /*
-    1. Retrieval prywatnych źródeł
-  */
-  const retrievalResult =
-    await searchPrivateLessonTopicChunks({
-      supabaseAdmin,
+  try {
+    const sourceResult =
+      await getLessonTopicSourceContext({
+        supabaseAdmin,
 
+        ownerId:
+          document.owner_id,
+
+        subjectId:
+          document.subject_id,
+
+        lessonTopicId:
+          document.lesson_topic_id,
+      })
+
+    assert.ok(
+      sourceResult.chunkCount > 0,
+      "Pełny kontekst nie zawiera chunków."
+    )
+
+    assert.equal(
+      sourceResult.sourceContext,
+      sourceResult.chunks
+        .map(
+          (chunk) =>
+            chunk.content
+        )
+        .join("\n\n"),
+      "sourceContext nie odpowiada pełnej treści dokumentu."
+    )
+
+    console.log(
+      `Pełny sourceContext: ${sourceResult.chunkCount} chunków`
+    )
+
+    const taskPlan =
+      buildTaskPlan({
+        materialType:
+          MATERIAL_TYPE,
+
+        taskCount:
+          TASK_COUNT,
+      })
+
+    assert.equal(
+      taskPlan.length,
+      TASK_COUNT
+    )
+
+    console.log(
+      `TaskPlan: ${taskPlan
+        .map(
+          (entry) =>
+            `${entry.number}. ${entry.taskSubtype}`
+        )
+        .join(" | ")}`
+    )
+
+    const identityInput = {
+      sourceFingerprint:
+        sourceResult
+          .sourceFingerprint,
+
+      lessonTopicId:
+        lessonTopic.id,
+
+      topicTitle:
+        lessonTopic
+          .display_title,
+
+      materialType:
+        MATERIAL_TYPE,
+
+      taskCount:
+        TASK_COUNT,
+
+      profiles:
+        PROFILES,
+
+      taskPlan,
+      generatorVersion,
+
+      contentSchemaVersion:
+        CONTENT_SCHEMA_VERSION,
+
+      model:
+        GENERATOR_MODEL,
+    }
+
+    const firstIdentity =
+      buildGenerationIdentity(
+        identityInput
+      )
+
+    const secondIdentity =
+      buildGenerationIdentity(
+        identityInput
+      )
+
+    assert.deepEqual(
+      secondIdentity,
+      firstIdentity,
+      "Identyczne wejście nie daje deterministycznej tożsamości generowania."
+    )
+
+    const {
+      generationFingerprint,
+      generationManifest,
+    } = firstIdentity
+
+    const claimData = {
       ownerId:
         document.owner_id,
 
@@ -313,214 +537,255 @@ async function main() {
         document.subject_id,
 
       lessonTopicId:
-        document.lesson_topic_id,
+        lessonTopic.id,
 
-      query,
-    })
+      sourceDocumentId:
+        sourceResult.documentId,
 
-  assert.equal(
-    retrievalResult.status,
-    "retrieved",
-    `Retrieval zakończył się statusem: ${retrievalResult.status}.`
-  )
+      subjectNameSnapshot:
+        subject.name,
 
-  /*
-    2. Audytowalny sourceContext
-  */
-  const sourceContext =
-    buildPrivateRagContext({
-      retrievalResult,
-    })
+      topicTitleSnapshot:
+        generationManifest
+          .topicTitle,
 
-  assert.equal(
-    sourceContext.status,
-    "ready",
-    "sourceContext nie otrzymał statusu ready."
-  )
-
-  assert.ok(
-    typeof sourceContext.ragContext ===
-      "string" &&
-      sourceContext.ragContext.trim(),
-
-    "sourceContext nie zawiera tekstowego ragContext."
-  )
-
-  console.log(
-    `Zaakceptowane źródła: ${sourceContext.sourceCount}`
-  )
-
-  /*
-  3. Pierwszy odczyt albo obliczenie coverage
-*/
-const firstCoverageResult =
-  await getOrAssessPrivateRagTaskTypeCoverage({
-    supabaseAdmin,
-    sourceContext,
-  })
-
-assert.equal(
-  firstCoverageResult.status,
-  "assessed",
-  "Pierwsze coverage nie zakończyło się statusem assessed."
-)
-
-assert.ok(
-  ["miss", "hit"].includes(
-    firstCoverageResult.cacheStatus
-  ),
-  `Nieprawidłowy pierwszy status cache: ${firstCoverageResult.cacheStatus}.`
-)
-
-console.log(
-  `Pierwsze sprawdzenie coverage — cache: ${firstCoverageResult.cacheStatus.toUpperCase()}`
-)
-
-console.log(
-  `Nowe tokeny coverage: ${firstCoverageResult.usage.totalTokens}`
-)
-
-/*
-  4. Ponowne użycie identycznego sourceContext
-  musi pobrać assessments z cache bez modelu.
-*/
-const secondCoverageResult =
-  await getOrAssessPrivateRagTaskTypeCoverage({
-    supabaseAdmin,
-    sourceContext,
-  })
-
-assert.equal(
-  secondCoverageResult.status,
-  "assessed",
-  "Drugie coverage nie zakończyło się statusem assessed."
-)
-
-assert.equal(
-  secondCoverageResult.cacheStatus,
-  "hit",
-  "Drugie sprawdzenie identycznych źródeł powinno zakończyć się cache HIT."
-)
-
-assert.equal(
-  secondCoverageResult.usage.totalTokens,
-  0,
-  "Cache HIT nie powinien zużywać nowych tokenów coverage."
-)
-
-assert.deepEqual(
-  secondCoverageResult.assessments,
-  firstCoverageResult.assessments,
-  "Assessments z cache różnią się od pierwszego wyniku."
-)
-
-console.log(
-  "Drugie sprawdzenie coverage — cache: HIT"
-)
-
-console.log(
-  "Nowe tokeny coverage przy HIT: 0"
-)
-
-const coverageResult =
-  secondCoverageResult
-
-  /*
-    4. Bezpieczny taskPlan
-  */
-  const taskPlanResult =
-    buildSafeTaskPlan({
-      assessments:
-        coverageResult.assessments,
+      sourceFileNameSnapshot:
+        sourceResult
+          .sourceFilename,
 
       materialType:
-        MATERIAL_TYPE,
+        generationManifest
+          .materialType,
 
       taskCount:
-        TASK_COUNT,
-    })
-
-  assert.equal(
-    taskPlanResult.status,
-    "ready",
-
-    [
-      "Nie można uruchomić Generatora, ponieważ bezpieczny taskPlan nie powstał.",
-      `Nieobsługiwane typy: ${
-        taskPlanResult
-          .unsupportedTaskSubtypes
-          .join(", ") ||
-        "brak danych"
-      }.`,
-    ].join(" ")
-  )
-
-  const { taskPlan } =
-    taskPlanResult
-
-  console.log(
-    `Bezpieczny taskPlan: ${taskPlan
-      .map(
-        (entry) =>
-          `${entry.number}. ${entry.taskSubtype}`
-      )
-      .join(" | ")}`
-  )
-
-  /*
-    5. Structured Outputs + model + parser
-  */
-  const generatedMaterial =
-    await generateMaterialFromContext({
-      topic:
-        lessonTopic.display_title,
-
-      type:
-        MATERIAL_TYPE,
+        generationManifest
+          .taskCount,
 
       profiles:
-        PROFILES,
+        generationManifest
+          .profiles,
 
-      taskPlan,
+      taskPlan:
+        generationManifest
+          .taskPlan,
 
-      ragContext:
-        sourceContext.ragContext,
+      sourceFingerprint:
+        generationManifest
+          .sourceFingerprint,
+
+      sourceManifestVersion:
+        sourceResult
+          .sourceManifestVersion,
+
+      generationFingerprint,
+
+      generatorVersion:
+        generationManifest
+          .generatorVersion,
+
+      contentSchemaVersion:
+        generationManifest
+          .contentSchemaVersion,
+
+      model:
+        generationManifest.model,
+    }
+
+    const firstClaim =
+      await claimGeneratedMaterial({
+        supabaseAdmin,
+        claimData,
+      })
+
+    assert.equal(
+      firstClaim.state,
+      "reserved",
+      `Unikalny test powinien rozpocząć się od MISS/reserved, otrzymano: ${firstClaim.state}.`
+    )
+
+    generatedMaterialId =
+      firstClaim
+        .generatedMaterialId
+
+    reservationStartedAt =
+      firstClaim.startedAt
+
+    console.log(
+      "Pierwsze żądanie cache: MISS / reserved"
+    )
+
+    let generationResult
+
+    try {
+      generationResult =
+        await generateMaterialFromContext({
+          topicTitle:
+            generationManifest
+              .topicTitle,
+
+          materialType:
+            generationManifest
+              .materialType,
+
+          profiles:
+            generationManifest
+              .profiles,
+
+          taskPlan:
+            generationManifest
+              .taskPlan,
+
+          sourceContext:
+            sourceResult
+              .sourceContext,
+
+          model:
+            generationManifest
+              .model,
+        })
+    } catch (generationError) {
+      try {
+        await markGeneratedMaterialFailed({
+          supabaseAdmin,
+
+          ownerId:
+            document.owner_id,
+
+          generatedMaterialId,
+          reservationStartedAt,
+
+          errorMessage:
+            generationError instanceof Error
+              ? generationError.message
+              : String(
+                  generationError
+                ),
+        })
+      } catch (cacheFailureError) {
+        console.error(
+          "Nie udało się zapisać błędu Generatora w cache:",
+          cacheFailureError instanceof Error
+            ? cacheFailureError.message
+            : String(
+                cacheFailureError
+              )
+        )
+      }
+
+      throw generationError
+    }
+
+    assertGeneratedMaterial({
+      generatedMaterial:
+        generationResult.material,
+
+      taskPlan:
+        generationManifest
+          .taskPlan,
     })
 
-  /*
-    6. Kontrola technicznego kontraktu
-  */
-  assertGeneratedMaterial({
-    generatedMaterial,
-    taskPlan,
-  })
+    assert.ok(
+      generationResult.usage
+        .totalTokens > 0,
+      "Cache MISS powinien zużyć tokeny Generatora."
+    )
 
-  console.log(
-    "\nWYGENEROWANE ZADANIA:"
-  )
+    const readyRecord =
+      await markGeneratedMaterialReady({
+        supabaseAdmin,
 
-  generatedMaterial.tasks.forEach(
-    (task) => {
+        ownerId:
+          document.owner_id,
+
+        generatedMaterialId,
+        reservationStartedAt,
+
+        material:
+          generationResult
+            .material,
+
+        usage:
+          generationResult.usage,
+      })
+
+    assert.equal(
+      readyRecord.status,
+      "ready"
+    )
+
+    assert.deepEqual(
+      readyRecord.material,
+      generationResult.material
+    )
+
+    console.log(
+      `Generator + parser: OK (${generationResult.usage.totalTokens} tokenów)`
+    )
+
+    const secondClaim =
+      await claimGeneratedMaterial({
+        supabaseAdmin,
+        claimData,
+      })
+
+    assert.equal(
+      secondClaim.state,
+      "hit",
+      `Drugie identyczne żądanie powinno zakończyć się HIT, otrzymano: ${secondClaim.state}.`
+    )
+
+    assert.equal(
+      secondClaim.generatedMaterialId,
+      generatedMaterialId,
+      "Cache HIT zwrócił inny generatedMaterialId."
+    )
+
+    assert.equal(
+      secondClaim.accessCount,
+      readyRecord.accessCount + 1,
+      "Cache HIT nie zwiększył access_count dokładnie o 1."
+    )
+
+    assert.deepEqual(
+      secondClaim.material,
+      generationResult.material,
+      "content_json z cache HIT różni się od wyniku parsera."
+    )
+
+    console.log(
+      "Drugie identyczne żądanie cache: HIT"
+    )
+
+    console.log(
+      "Nowe tokeny przy HIT: 0"
+    )
+
+    console.log(
+      "\nTEST INTEGRACJI PEŁNE ŹRÓDŁO → GENERATOR → CACHE: OK"
+    )
+  } finally {
+    await deleteTestRecord({
+      supabaseAdmin,
+
+      ownerId:
+        document.owner_id,
+
+      generatedMaterialId,
+    })
+
+    if (generatedMaterialId) {
       console.log(
-        `${task.number}. [${task.taskSubtype}] ${task.question}`
+        "Rekord testowy generated_materials został usunięty."
       )
     }
-  )
-
-  console.log(
-    "\nTEST INTEGRACJI PRIVATE RAG → GENERATOR: OK"
-  )
-
-  console.log(
-    "Treść zadań wymaga teraz kontroli merytorycznej nauczyciela."
-  )
+  }
 }
 
 try {
   await main()
 } catch (error) {
   console.error(
-    "\nTEST INTEGRACJI PRIVATE RAG → GENERATOR: BŁĄD"
+    "\nTEST INTEGRACJI PEŁNE ŹRÓDŁO → GENERATOR → CACHE: BŁĄD"
   )
 
   console.error(
@@ -534,5 +799,5 @@ try {
 
 /*
 Uruchomienie testu:
-node --env-file=.env.local scripts\testPrivateRagGeneratorIntegration.mjs
+node --conditions=react-server --env-file=.env.local scripts\\testPrivateRagGeneratorIntegration.mjs
 */

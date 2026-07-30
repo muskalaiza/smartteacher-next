@@ -1,8 +1,8 @@
 import assert from "node:assert/strict"
 
 import {
-  buildSafeTaskPlan,
-} from "../lib/generation/buildSafeTaskPlan.js"
+  buildTaskPlan,
+} from "../lib/generation/buildTaskPlan.js"
 
 import {
   buildMaterialResponseSchema,
@@ -12,109 +12,18 @@ import {
   taskTypeSchemas,
 } from "../lib/generation/taskTypeSchemas.js"
 
-const TASK_SUBTYPES = [
-  "closed_single",
-  "closed_tf",
-  "match_fill",
-  "match_pair",
-  "error_find",
-  "open_code",
-  "open_explain",
-]
-
-function createSupportedAssessments() {
-  return Object.fromEntries(
-    TASK_SUBTYPES.map((taskSubtype) => [
-      taskSubtype,
-      {
-        isSupported: true,
-      },
-    ])
-  )
-}
-
-function buildTestTaskPlan() {
-  const result = buildSafeTaskPlan({
-    assessments:
-      createSupportedAssessments(),
-
-    materialType: "kartkówka",
-    taskCount: 5,
-  })
-
-  assert.equal(
-    result.status,
-    "ready"
-  )
-
-  return result.taskPlan
-}
-
-function testStandardSchema(taskPlan) {
-  const schema =
-    buildMaterialResponseSchema({
-      taskPlan,
-      shouldGenerateGlossary: false,
-      shouldGenerateAdhdSupport: false,
-    })
-
-  assert.equal(
-    schema.type,
-    "object"
-  )
-
-  assert.equal(
-    schema.additionalProperties,
-    false
-  )
-
-  assert.deepEqual(
-    schema.required,
-    [
-      "intro",
-      "tip",
-      "glossary",
-      "tasks",
-    ]
-  )
-
-  assert.deepEqual(
-    schema.properties.intro.enum,
-    [""]
-  )
-
-  assert.equal(
-    schema.properties.tip.minItems,
-    0
-  )
-
-  assert.equal(
-    schema.properties.tip.maxItems,
-    0
-  )
-
-  assert.equal(
-    schema.properties.glossary.minItems,
-    0
-  )
-
-  assert.equal(
-    schema.properties.glossary.maxItems,
-    0
-  )
-
-  assert.equal(
-    schema.properties.tasks.minItems,
-    5
-  )
-
-  assert.equal(
-    schema.properties.tasks.maxItems,
-    5
-  )
+function assertTaskSchemas({
+  schema,
+  taskPlan,
+  shouldGenerateAdhdSupport,
+}) {
+  const taskItems =
+    schema.properties.tasks.items
 
   const taskSchemas =
-    schema.properties.tasks.items.anyOf
+    taskPlan.length === 1
+      ? [taskItems]
+      : taskItems.anyOf
 
   assert.equal(
     taskSchemas.length,
@@ -131,94 +40,209 @@ function testStandardSchema(taskPlan) {
       assert.deepEqual(
         taskSchema.properties.taskSubtype.enum,
         [
-          taskPlan[index].taskSubtype,
+          taskPlan[index]
+            .taskSubtype,
         ]
       )
 
-      assert.deepEqual(
-        taskSchema.properties.adhdSupport,
-        {
-          type: "null",
-        }
-      )
-    }
-  )
+      if (
+        shouldGenerateAdhdSupport
+      ) {
+        const adhdSupport =
+          taskSchema.properties
+            .adhdSupport
 
-  console.log(
-    "1. Standardowy schemat pięciu zadań: OK"
+        assert.equal(
+          adhdSupport.type,
+          "object"
+        )
+
+        assert.deepEqual(
+          adhdSupport.required,
+          [
+            "focus",
+            "steps",
+            "checkpoint",
+          ]
+        )
+
+        assert.equal(
+          adhdSupport.properties
+            .steps.minItems,
+          2
+        )
+
+        assert.equal(
+          adhdSupport.properties
+            .steps.maxItems,
+          2
+        )
+      } else {
+        assert.deepEqual(
+          taskSchema.properties
+            .adhdSupport,
+          {
+            type: "null",
+          }
+        )
+      }
+    }
   )
 }
 
-function testProfileOptions(taskPlan) {
+function testStandardSchemas() {
+  for (
+    const taskCount of [
+      5,
+      6,
+      7,
+    ]
+  ) {
+    const taskPlan =
+      buildTaskPlan({
+        materialType:
+          "kartkówka",
+
+        taskCount,
+      })
+
+    const schema =
+      buildMaterialResponseSchema({
+        taskPlan,
+        shouldGenerateGlossary:
+          false,
+        shouldGenerateAdhdSupport:
+          false,
+      })
+
+    assert.equal(
+      schema.type,
+      "object"
+    )
+
+    assert.equal(
+      schema.additionalProperties,
+      false
+    )
+
+    assert.deepEqual(
+      schema.required,
+      [
+        "intro",
+        "tip",
+        "glossary",
+        "tasks",
+      ]
+    )
+
+    assert.deepEqual(
+      schema.properties.intro.enum,
+      [""]
+    )
+
+    assert.equal(
+      schema.properties.tip.minItems,
+      0
+    )
+
+    assert.equal(
+      schema.properties.tip.maxItems,
+      0
+    )
+
+    assert.equal(
+      schema.properties.glossary
+        .minItems,
+      0
+    )
+
+    assert.equal(
+      schema.properties.glossary
+        .maxItems,
+      0
+    )
+
+    assert.equal(
+      schema.properties.tasks
+        .minItems,
+      taskCount
+    )
+
+    assert.equal(
+      schema.properties.tasks
+        .maxItems,
+      taskCount
+    )
+
+    assertTaskSchemas({
+      schema,
+      taskPlan,
+      shouldGenerateAdhdSupport:
+        false,
+    })
+
+    console.log(
+      `Schemat Standard, ${taskCount} zadań: OK`
+    )
+  }
+}
+
+function testProfileOptions() {
+  const taskPlan =
+    buildTaskPlan({
+      materialType:
+        "karta pracy",
+
+      taskCount:
+        5,
+    })
+
   const schema =
     buildMaterialResponseSchema({
       taskPlan,
-      shouldGenerateGlossary: true,
-      shouldGenerateAdhdSupport: true,
+      shouldGenerateGlossary:
+        true,
+      shouldGenerateAdhdSupport:
+        true,
     })
 
   assert.equal(
-    schema.properties.glossary.minItems,
+    schema.properties.glossary
+      .minItems,
     1
   )
 
-  const taskSchemas =
-    schema.properties.tasks.items.anyOf
-
-  taskSchemas.forEach(
-    (taskSchema) => {
-      const adhdSupport =
-        taskSchema.properties.adhdSupport
-
-      assert.equal(
-        adhdSupport.type,
-        "object"
-      )
-
-      assert.deepEqual(
-        adhdSupport.required,
-        [
-          "focus",
-          "steps",
-          "checkpoint",
-        ]
-      )
-
-      assert.equal(
-        adhdSupport.properties.steps.minItems,
-        2
-      )
-
-      assert.equal(
-        adhdSupport.properties.steps.maxItems,
-        2
-      )
-    }
-  )
+  assertTaskSchemas({
+    schema,
+    taskPlan,
+    shouldGenerateAdhdSupport:
+      true,
+  })
 
   console.log(
-    "2. Słowniczek i wsparcie ADHD: OK"
+    "Słowniczek i wsparcie ADHD: OK"
   )
 }
 
 function main() {
   const schemasBefore =
-    JSON.stringify(taskTypeSchemas)
+    JSON.stringify(
+      taskTypeSchemas
+    )
 
-  const taskPlan =
-    buildTestTaskPlan()
-
-  testStandardSchema(taskPlan)
-  testProfileOptions(taskPlan)
+  testStandardSchemas()
+  testProfileOptions()
 
   assert.equal(
-    JSON.stringify(taskTypeSchemas),
+    JSON.stringify(
+      taskTypeSchemas
+    ),
     schemasBefore,
     "buildMaterialResponseSchema zmodyfikował bazowe taskTypeSchemas."
   )
 
   console.log(
-    "3. Bazowe taskTypeSchemas nie zostały zmienione: OK"
+    "Bazowe taskTypeSchemas nie zostały zmienione: OK"
   )
 
   console.log(
@@ -241,8 +265,8 @@ try {
 
   process.exitCode = 1
 }
-/*
-uruchomienie testu
-node scripts/testBuildMaterialResponseSchema.mjs
 
+/*
+Uruchomienie testu:
+node scripts/testBuildMaterialResponseSchema.mjs
 */

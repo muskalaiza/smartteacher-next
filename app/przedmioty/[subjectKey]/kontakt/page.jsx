@@ -2,6 +2,8 @@
 
 import Link from "next/link";
 
+import { Send, WandSparkles } from "lucide-react";
+
 const CONTACT_REASONS = [
   "Pytanie o SmartTeacher",
   "Feedback po testach",
@@ -153,12 +155,19 @@ export default function KontaktPage() {
                 podłączymy w kolejnym kroku.
               </p>
 
-              <button
-                type="submit"
-                className="rounded-xl bg-sky-500 px-6 py-3 text-sm font-semibold text-white transition hover:bg-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-500/30"
-              >
-                Wyślij wiadomość
-              </button>
+             <button
+  className="
+    flex items-center justify-center gap-2
+    rounded-xl bg-sky-600 px-6 py-3
+    font-semibold text-white
+    transition
+    hover:bg-sky-500
+    focus:outline-none focus:ring-2 focus:ring-sky-500/40
+  "
+>
+  <Send className="h-4 w-4" aria-hidden="true" />
+  Wyślij wiadomość
+</button>
             </div>
           </form>
         </section>

@@ -1,3 +1,7 @@
+import {
+  getTaskPoints,
+} from "@/lib/generation/scoring";
+
 import GeneratedTask from "./GeneratedTask";
 
 function BlankField({ label }) {
@@ -24,9 +28,10 @@ export default function GeneratedStudentMaterial({
   tasks,
 }) {
   return (
-  <article className="print-student-material space-y-6 rounded-2xl border border-zinc-700 bg-zinc-950 p-6 shadow-sm"
-     data-profile={profileValue}
-     >
+    <article
+      className="print-student-material space-y-6 rounded-2xl border border-zinc-700 bg-zinc-950 p-6 shadow-sm"
+      data-profile={profileValue}
+    >
       <header className="space-y-5 border-b border-zinc-800 pb-6">
         <h3 className="text-xl font-bold uppercase tracking-wide text-zinc-50">
           {materialTypeLabel} — Profil: {profileLabel}
@@ -58,10 +63,10 @@ export default function GeneratedStudentMaterial({
           {tasks.map((task) => (
             <li
               key={`${task.number}-${task.taskSubtype}`}
-             className="print-task rounded-xl border border-zinc-800 bg-zinc-950/70 p-4"
+              className="print-task rounded-xl border border-zinc-800 bg-zinc-950/70 p-4"
             >
               <p className="text-xs font-semibold uppercase tracking-wide text-sky-400">
-                Zadanie {task.number}
+                Zadanie {task.number} ({getTaskPoints(task)} pkt)
               </p>
 
               <div className="mt-3">

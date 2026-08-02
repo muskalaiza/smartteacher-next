@@ -1,10 +1,14 @@
 
 "use client";
 import { useState } from "react";
+
+import { Printer, WandSparkles } from "lucide-react";
+
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useGeneratorLessonCatalog } from "@/lib/lessonCatalogs/useGeneratorLessonCatalog";
 import { useActiveTeacherSubject } from "@/lib/subjects/useActiveTeacherSubject";
+
 
 import { supabase } from "@/lib/supabaseClient";
 import {
@@ -547,12 +551,21 @@ const canGenerate =
               </div>
             </fieldset>
 
-           <button
+  <button
   type="button"
   onClick={handleGenerate}
   disabled={!canGenerate}
-  className="w-full rounded-xl bg-sky-500 px-5 py-3 text-sm font-semibold text-white transition hover:bg-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-500/30 disabled:cursor-not-allowed disabled:bg-zinc-700 disabled:text-zinc-400"
+  className="
+    flex w-full items-center justify-center gap-2
+    rounded-xl bg-sky-600 px-5 py-3
+    font-semibold text-white
+    transition
+    hover:bg-sky-500
+    focus:outline-none focus:ring-2 focus:ring-sky-500/40
+    disabled:cursor-not-allowed disabled:opacity-50
+  "
 >
+  <WandSparkles className="h-4 w-4" aria-hidden="true" />
   {isGenerating
     ? "Generowanie materiału..."
     : "Generuj zestaw materiałów"}

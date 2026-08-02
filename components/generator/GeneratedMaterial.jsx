@@ -1,6 +1,7 @@
 "use client";
-
+import { Printer, WandSparkles } from "lucide-react";
 import GeneratedStudentMaterial from "./GeneratedStudentMaterial";
+import TeacherAnswerKey from "./TeacherAnswerKey";
 
 export default function GeneratedMaterial({
   generationOutput,
@@ -21,7 +22,7 @@ export default function GeneratedMaterial({
     generationResult?.lessonTopic?.displayTitle;
 
   const materialTypeValue =
-  generationOutput?.materialType?.value;
+    generationOutput?.materialType?.value;
 
   if (
     !Array.isArray(tasks) ||
@@ -42,10 +43,21 @@ export default function GeneratedMaterial({
         <button
           type="button"
           onClick={handlePrint}
-          className="inline-flex items-center justify-center rounded-xl bg-emerald-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
-        >
-             🖨️ Drukuj / Zapisz PDF
-        </button>
+          className="
+    flex items-center justify-center gap-2
+    rounded-xl border border-zinc-700
+    bg-zinc-900 px-5 py-3
+    font-semibold text-zinc-200
+    transition
+    hover:border-sky-500/40
+    hover:bg-sky-500/10
+    hover:text-sky-200
+    focus:outline-none focus:ring-2 focus:ring-sky-500/30
+  "
+>
+  <Printer className="h-4 w-4" aria-hidden="true" />
+  Drukuj / Zapisz PDF
+</button>
       </div>
 
       <div className="print-materials space-y-8">
@@ -60,6 +72,12 @@ export default function GeneratedMaterial({
             tasks={tasks}
           />
         ))}
+
+        <TeacherAnswerKey
+          materialTypeLabel={materialTypeLabel}
+          topicTitle={topicTitle}
+          tasks={tasks}
+        />
       </div>
     </section>
   );

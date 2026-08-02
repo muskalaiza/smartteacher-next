@@ -150,7 +150,7 @@
     page-break-after: always;
   }
 
-  .print-student-material:last-child {
+  .print-student-material:last-of-type {
     break-after: auto;
     page-break-after: auto;
   }
@@ -424,6 +424,69 @@
     line-height: 1.15 !important;
     letter-spacing: normal !important;
     word-spacing: normal !important;
+  }
+
+
+  /* =========================
+     WSPÓLNY KLUCZ NAUCZYCIELA
+  ========================= */
+
+  .print-teacher-answer-key {
+    display: block !important;
+    width: 100% !important;
+    max-width: none !important;
+
+    margin: 0 !important;
+    padding: 0 !important;
+
+    border: 0 !important;
+    border-radius: 0 !important;
+
+    background: #ffffff !important;
+
+    font-size: 9pt !important;
+    line-height: 1.18 !important;
+
+    break-before: page;
+    page-break-before: always;
+  }
+
+  .print-teacher-answer-key-toggle {
+    display: none !important;
+  }
+
+  .print-teacher-answer-key-content {
+    display: block !important;
+  }
+
+  .print-teacher-answer-key-header {
+    margin: 0 0 3mm !important;
+    padding: 0 0 2.5mm !important;
+
+    border-bottom: 1px solid #777777 !important;
+  }
+
+  .print-teacher-answer-key-header h3,
+  .print-teacher-answer-key-header p {
+    margin-block-start: 0 !important;
+    margin-block-end: 0 !important;
+  }
+
+  .print-answer-key-task {
+    break-inside: avoid-page !important;
+    page-break-inside: avoid !important;
+  }
+
+  .print-teacher-answer-key pre {
+    overflow: visible !important;
+    white-space: pre-wrap !important;
+
+    break-inside: avoid-page;
+    page-break-inside: avoid;
+  }
+
+  .print-teacher-answer-key ul {
+    margin-left: 0 !important;
   }
 
   .print-hidden,

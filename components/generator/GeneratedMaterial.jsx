@@ -1,28 +1,57 @@
 "use client";
-import { Printer, WandSparkles } from "lucide-react";
+
+import { Printer } from "lucide-react";
+import { useEffect, useState } from "react";
+
+import { getTeacherGradeScale } from "@/lib/gradeScale/teacherGradeScaleApi";
+import { supabase } from "@/lib/supabaseClient";
+
 import GeneratedStudentMaterial from "./GeneratedStudentMaterial";
 import TeacherAnswerKey from "./TeacherAnswerKey";
 
-export default function GeneratedMaterial({
-  generationOutput,
-}) {
-  const generationResult =
-    generationOutput?.result;
+export default function GeneratedMaterial({ generationOutput }) {
+  const [gradeScale, setGradeScale] = useState(null);
+  const [isGradeScaleLoading, setIsGradeScaleLoading] = useState(true);
+  const [gradeScaleError, setGradeScaleError] = useState("");
 
-  const tasks =
-    generationResult?.material?.tasks;
+  const generationResult = generationOutput?.result;
+  const tasks = generationResult?.material?.tasks;
+  const profiles = generationOutput?.profiles;
+  const materialTypeLabel = generationOutput?.materialType?.label;
+  const topicTitle = generationResult?.lessonTopic?.displayTitle;
+  const materialTypeValue = generationOutput?.materialType?.value;
 
-  const profiles =
-    generationOutput?.profiles;
+  useEffect(() => {
+    let isMounted = true;
 
-  const materialTypeLabel =
-    generationOutput?.materialType?.label;
+    async function loadGradeScale() {
+      try {
+        const scale = await getTeacherGradeScale({ supabase });
 
-  const topicTitle =
-    generationResult?.lessonTopic?.displayTitle;
+        if (isMounted) {
+          setGradeScale(scale);
+        }
+      } catch (error) {
+        if (isMounted) {
+          setGradeScaleError(
+            error instanceof Error
+              ? error.message
+              : "Nie udało się pobrać skali ocen."
+          );
+        }
+      } finally {
+        if (isMounted) {
+          setIsGradeScaleLoading(false);
+        }
+      }
+    }
 
-  const materialTypeValue =
-    generationOutput?.materialType?.value;
+    loadGradeScale();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   if (
     !Array.isArray(tasks) ||
@@ -43,21 +72,14 @@ export default function GeneratedMaterial({
         <button
           type="button"
           onClick={handlePrint}
-          className="
-    flex items-center justify-center gap-2
-    rounded-xl border border-zinc-700
-    bg-zinc-900 px-5 py-3
-    font-semibold text-zinc-200
-    transition
-    hover:border-sky-500/40
-    hover:bg-sky-500/10
-    hover:text-sky-200
-    focus:outline-none focus:ring-2 focus:ring-sky-500/30
-  "
->
-  <Printer className="h-4 w-4" aria-hidden="true" />
-  Drukuj / Zapisz PDF
-</button>
+          disabled={isGradeScaleLoading}
+          className="flex items-center justify-center gap-2 rounded-xl border border-zinc-700 bg-zinc-900 px-5 py-3 font-semibold text-zinc-200 transition hover:border-sky-500/40 hover:bg-sky-500/10 hover:text-sky-200 focus:outline-none focus:ring-2 focus:ring-sky-500/30 disabled:cursor-wait disabled:opacity-60"
+        >
+          <Printer className="h-4 w-4" aria-hidden="true" />
+          {isGradeScaleLoading
+            ? "Przygotowywanie wydruku..."
+            : "Drukuj / Zapisz PDF"}
+        </button>
       </div>
 
       <div className="print-materials space-y-8">
@@ -77,6 +99,9 @@ export default function GeneratedMaterial({
           materialTypeLabel={materialTypeLabel}
           topicTitle={topicTitle}
           tasks={tasks}
+          gradeScale={gradeScale}
+          isGradeScaleLoading={isGradeScaleLoading}
+          gradeScaleError={gradeScaleError}
         />
       </div>
     </section>

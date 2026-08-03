@@ -1,11 +1,11 @@
 "use client";
 
 import { ChevronRight, KeyRound } from "lucide-react";
+import Link from "next/link";
 import { useState } from "react";
 
-import {
-  buildTeacherAnswerKey,
-} from "@/lib/generation/buildTeacherAnswerKey";
+import { buildTeacherAnswerKey } from "@/lib/generation/buildTeacherAnswerKey";
+import { buildTeacherGradeScaleRanges } from "@/lib/gradeScale/teacherGradeScale";
 
 function KeyLabel({ children }) {
   return (
@@ -40,10 +40,7 @@ function AnswerValue({ answer }) {
 
         <ul className="mt-2 space-y-1 pl-5 text-sm leading-6 text-zinc-200 print:mt-1 print:space-y-0 print:text-[9pt] print:leading-tight print:text-black">
           {answer.items.map((item) => (
-            <li
-              key={item}
-              className="list-disc"
-            >
+            <li key={item} className="list-disc">
               {item}
             </li>
           ))}
@@ -62,37 +59,98 @@ function AnswerValue({ answer }) {
   );
 }
 
+function GradeScaleSection({
+  gradeScale,
+  isGradeScaleLoading,
+  gradeScaleError,
+}) {
+  if (isGradeScaleLoading) {
+    return (
+      <p className="mt-4 text-sm text-zinc-400 print:hidden">
+        Ładowanie skali ocen...
+      </p>
+    );
+  }
+
+  if (gradeScaleError) {
+    return (
+      <p className="mt-4 text-sm text-red-300 print:hidden">
+        {gradeScaleError}
+      </p>
+    );
+  }
+
+  if (!gradeScale) {
+    return (
+      <div className="mt-4 rounded-xl border border-zinc-700 bg-zinc-950/70 p-4 text-sm text-zinc-300 print:hidden">
+        <p>
+          Ustaw skalę ocen, aby została dołączona do klucza nauczyciela.
+        </p>
+        <Link
+          href="/ustawienia"
+          className="mt-2 inline-flex font-semibold text-sky-300 transition hover:text-sky-200"
+        >
+          Przejdź do ustawień skali →
+        </Link>
+      </div>
+    );
+  }
+
+  const ranges = buildTeacherGradeScaleRanges(gradeScale);
+
+  return (
+    <section className="mt-5 border-t border-zinc-700 pt-4 print:mt-3 print:border-zinc-500 print:pt-3">
+      <h4 className="text-lg font-bold text-zinc-50 print:text-[11pt] print:text-black">
+        Skala ocen
+      </h4>
+
+      <ol className="mt-3 grid gap-2 text-sm text-zinc-200 sm:grid-cols-2 print:mt-1 print:grid-cols-2 print:gap-x-6 print:gap-y-0 print:text-[9pt] print:text-black">
+        {ranges.map((range) => (
+          <li key={range.grade} className="flex justify-between gap-4">
+            <span>
+              {range.grade} — {range.label}
+            </span>
+            <span className="shrink-0 font-semibold">
+              {range.min}–{range.max}%
+            </span>
+          </li>
+        ))}
+      </ol>
+    </section>
+  );
+}
+
 export default function TeacherAnswerKey({
   materialTypeLabel,
   topicTitle,
   tasks,
+  gradeScale,
+  isGradeScaleLoading = false,
+  gradeScaleError = "",
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const answerKey = buildTeacherAnswerKey(tasks);
 
   return (
     <section className="print-teacher-answer-key rounded-2xl border border-zinc-700 bg-zinc-900/40 p-6 shadow-sm">
- <button
-  type="button"
- className="print-teacher-answer-key-toggle flex w-full items-center gap-3 text-left text-sm font-semibold text-zinc-200 transition hover:text-white focus:outline-none focus:ring-2 focus:ring-zinc-500/40"
-  aria-expanded={isOpen}
-  aria-controls="teacher-answer-key-content"
-  onClick={() => setIsOpen((current) => !current)}
->
-  <ChevronRight
-    aria-hidden="true"
-    className={`h-4 w-4 shrink-0 transition-transform duration-200 ${
-      isOpen ? "rotate-90" : ""
-    }`}
-  />
+      <button
+        type="button"
+        className="print-teacher-answer-key-toggle flex w-full items-center gap-3 text-left text-sm font-semibold text-zinc-200 transition hover:text-white focus:outline-none focus:ring-2 focus:ring-zinc-500/40"
+        aria-expanded={isOpen}
+        aria-controls="teacher-answer-key-content"
+        onClick={() => setIsOpen((current) => !current)}
+      >
+        <ChevronRight
+          aria-hidden="true"
+          className={`h-4 w-4 shrink-0 transition-transform duration-200 ${
+            isOpen ? "rotate-90" : ""
+          }`}
+        />
 
-  <KeyRound
-    aria-hidden="true"
-    className="h-4 w-4 shrink-0"
-  />
+        <KeyRound aria-hidden="true" className="h-4 w-4 shrink-0" />
 
-  <span>Klucz odpowiedzi dla nauczyciela</span>
-</button>
+        <span>Klucz odpowiedzi dla nauczyciela</span>
+      </button>
 
       <div
         id="teacher-answer-key-content"
@@ -100,19 +158,19 @@ export default function TeacherAnswerKey({
           isOpen ? "block" : "hidden"
         }`}
       >
-<header className="print-teacher-answer-key-header hidden border-b border-zinc-700 pb-4 print:block print:mt-0 print:border-zinc-500">
-  <h2 className="text-xl font-bold">
-    Klucz odpowiedzi dla nauczyciela
-  </h2>
+        <header className="print-teacher-answer-key-header hidden border-b border-zinc-700 pb-4 print:mt-0 print:block print:border-zinc-500">
+          <h2 className="text-xl font-bold">
+            Klucz odpowiedzi dla nauczyciela
+          </h2>
 
-  <p className="mt-3 text-sm">
-    <strong>Materiał:</strong> {materialTypeLabel}
-  </p>
+          <p className="mt-3 text-sm">
+            <strong>Materiał:</strong> {materialTypeLabel}
+          </p>
 
-  <p className="mt-1 text-sm">
-    <strong>Temat:</strong> {topicTitle}
-  </p>
-</header>
+          <p className="mt-1 text-sm">
+            <strong>Temat:</strong> {topicTitle}
+          </p>
+        </header>
 
         <ol className="mt-6 space-y-5 print:mt-3 print:space-y-0">
           {answerKey.tasks.map((task) => (
@@ -138,16 +196,11 @@ export default function TeacherAnswerKey({
                   <KeyLabel>Punktacja:</KeyLabel>
 
                   <ul className="mt-2 space-y-1 pl-5 text-sm leading-6 text-zinc-200 print:mt-1 print:space-y-0 print:text-[9pt] print:leading-tight print:text-black">
-                    {task.scoringCriteria.map(
-                      (criterion) => (
-                        <li
-                          key={criterion}
-                          className="list-disc"
-                        >
-                          {criterion}
-                        </li>
-                      )
-                    )}
+                    {task.scoringCriteria.map((criterion) => (
+                      <li key={criterion} className="list-disc">
+                        {criterion}
+                      </li>
+                    ))}
                   </ul>
                 </div>
               </div>
@@ -155,17 +208,21 @@ export default function TeacherAnswerKey({
           ))}
         </ol>
 
-       <footer className="mt-6 border-t border-zinc-700 pt-4 print:mt-3 print:border-zinc-500 print:pt-3">
+        <footer className="mt-6 border-t border-zinc-700 pt-4 print:mt-3 print:border-zinc-500 print:pt-3">
           <h4 className="text-lg font-bold text-zinc-50 print:text-[11pt] print:text-black">
             Podsumowanie punktacji
           </h4>
 
           <p className="mt-2 text-sm text-zinc-200 print:mt-1 print:text-[9pt] print:text-black">
-            <span className="font-semibold">
-              Suma punktów:
-            </span>{" "}
+            <span className="font-semibold">Suma punktów:</span>{" "}
             {answerKey.totalPoints} pkt
           </p>
+
+          <GradeScaleSection
+            gradeScale={gradeScale}
+            isGradeScaleLoading={isGradeScaleLoading}
+            gradeScaleError={gradeScaleError}
+          />
         </footer>
       </div>
     </section>

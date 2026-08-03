@@ -2,7 +2,7 @@
 "use client";
 import { useState } from "react";
 
-import { Printer, WandSparkles } from "lucide-react";
+import { WandSparkles } from "lucide-react";
 
 import Link from "next/link";
 import { useParams } from "next/navigation";

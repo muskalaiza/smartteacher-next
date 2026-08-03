@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 
-import { Send, WandSparkles } from "lucide-react";
+import { Send } from "lucide-react";
 
 const CONTACT_REASONS = [
   "Pytanie o SmartTeacher",

@@ -312,6 +312,35 @@
     line-height: 1.15 !important;
   }
 
+  .print-task .print-answer-options {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) !important;
+    row-gap: 0.45mm !important;
+    column-gap: 5mm !important;
+    margin: 0.5mm 0 0 !important;
+    padding: 0 !important;
+  }
+
+  .print-task .print-answer-options.grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  .print-task .print-answer-options > .print-answer-option,
+  .print-task .print-answer-options > .print-answer-option + .print-answer-option {
+    margin-block: 0 !important;
+    margin-top: 0 !important;
+    padding: 0.15mm 0 !important;
+  }
+
+  /*
+    text-sm/leading-6 na spanach z UI nie może sterować
+    wysokością odpowiedzi w wydruku.
+  */
+  .print-task .print-answer-options > .print-answer-option > span {
+    font-size: 9pt !important;
+    line-height: 1.15 !important;
+  }
+
   /*
     match_pair i match_fill pozostają
     w dwóch kompaktowych kolumnach.
@@ -428,6 +457,216 @@
 
 
   /* =========================
+     KARTA PRACY — WSTĘP,
+     MINI-ŚCIĄGAWKA I SŁOWNICZEK
+  ========================= */
+
+  .print-worksheet-support {
+    display: block !important;
+    margin: 0 0 1.2mm !important;
+  }
+
+  .print-worksheet-support > * {
+    margin-block-start: 0 !important;
+    margin-block-end: 0 !important;
+  }
+
+  .print-worksheet-support > * + * {
+    margin-top: 1mm !important;
+  }
+
+  .print-worksheet-section.print-worksheet-tips,
+  .print-worksheet-section.print-worksheet-glossary {
+    margin-top: 3mm !important;
+  }
+
+  .print-worksheet-section {
+    margin: 0 !important;
+    padding: 0 !important;
+
+    border: 0 !important;
+    border-radius: 0 !important;
+
+    background: #ffffff !important;
+  }
+
+  .print-worksheet-section h4 {
+    margin: 0 0 0.7mm !important;
+
+    font-size: 9pt !important;
+    line-height: 1.1 !important;
+    letter-spacing: 0 !important;
+  }
+
+  .print-worksheet-section p,
+  .print-worksheet-section dt,
+  .print-worksheet-section dd {
+    margin: 0 !important;
+
+    font-size: 8.5pt !important;
+    line-height: 1.15 !important;
+  }
+
+  .print-worksheet-tip + .print-worksheet-tip {
+    margin-top: 1mm !important;
+  }
+
+  .print-worksheet-tip-code {
+    margin: 0.7mm 0 0 !important;
+    padding: 1mm 1.5mm !important;
+
+    border: 1px solid #aaaaaa !important;
+    border-radius: 1mm !important;
+
+    background: #f7f7f7 !important;
+
+    font-size: 8pt !important;
+    line-height: 1.1 !important;
+  }
+
+  .print-worksheet-glossary dl {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 1mm 4mm !important;
+
+    margin: 0 !important;
+  }
+
+  .print-worksheet-glossary-item {
+    margin: 0 !important;
+  }
+
+  .print-student-material[data-material-type="karta pracy"]
+    header {
+    margin-bottom: 2mm !important;
+    padding-bottom: 1.5mm !important;
+  }
+
+  .print-student-material[data-material-type="karta pracy"]
+    .print-student-tasks > h4 {
+    margin-bottom: 1.2mm !important;
+  }
+
+  .print-student-material[data-material-type="karta pracy"]
+    .print-task {
+    padding: 1mm 0 !important;
+  }
+
+  .print-student-material[data-material-type="karta pracy"]
+    .print-task pre {
+    font-size: 8pt !important;
+    line-height: 1.12 !important;
+  }
+
+
+  .print-student-material[data-material-type="karta pracy"]
+    .print-task [class*="space-y-"] > * + * {
+    margin-top: 0.9mm !important;
+  }
+
+
+  .print-student-material[data-material-type="karta pracy"]
+    .print-task .print-answer-options > .print-answer-option,
+  .print-student-material[data-material-type="karta pracy"]
+    .print-task .print-answer-options > .print-answer-option + .print-answer-option {
+    margin-block: 0 !important;
+    margin-top: 0 !important;
+  }
+
+  /*
+    Karta pracy — pola odpowiedzi mają różne funkcje.
+    Nie wolno nadpisywać ich wspólną wysokością.
+  */
+  .print-student-material[data-material-type="karta pracy"]
+    .min-h-40 {
+    min-height: 14mm !important;
+  }
+
+  .print-student-material[data-material-type="karta pracy"]
+    .min-h-32 {
+    min-height: 26mm !important;
+  }
+
+  .print-student-material[data-material-type="karta pracy"]
+    .min-h-64 {
+    min-height: 32mm !important;
+  }
+
+  .print-student-material[data-material-type="karta pracy"]
+    .print-asd-support,
+  .print-student-material[data-material-type="karta pracy"]
+    .print-adhd-plan {
+    margin-top: 0.7mm !important;
+  }
+
+  .print-student-material[data-material-type="karta pracy"]
+    .print-asd-support > p + p {
+    margin-top: 0.35mm !important;
+  }
+
+  .print-student-material[data-material-type="karta pracy"]
+    .print-adhd-plan p,
+  .print-student-material[data-material-type="karta pracy"]
+    .print-adhd-steps > li,
+  .print-student-material[data-material-type="karta pracy"]
+    .print-adhd-steps > li > span {
+    font-size: 9pt !important;
+    line-height: 1.2 !important;
+  }
+
+  .print-student-material[data-material-type="karta pracy"]
+    .print-adhd-plan > p + p {
+    margin-top: 0.7mm !important;
+  }
+
+  .print-student-material[data-material-type="karta pracy"]
+    .print-adhd-steps {
+    display: block !important;
+    margin: 0.7mm 0 0 !important;
+    padding: 0 !important;
+  }
+
+  .print-student-material[data-material-type="karta pracy"]
+    .print-task .print-adhd-steps > li {
+    display: flex !important;
+    gap: 1.5mm !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  .print-student-material[data-material-type="karta pracy"]
+    .print-task .print-adhd-steps > li + li {
+    margin-top: 0.45mm !important;
+  }
+
+
+  /* =========================
+     KARTA PRACY — UCZEŃ OBCOJĘZYCZNY
+     Słowniczek ma wspierać rozumienie, nie być warstwą
+     kompresowaną mocniej niż treść zadań.
+  ========================= */
+
+  .print-student-material[data-material-type="karta pracy"][data-profile="Obcojęzyczny"]
+    .print-worksheet-glossary h4 {
+    margin-bottom: 0.9mm !important;
+    font-size: 9.5pt !important;
+    line-height: 1.15 !important;
+  }
+
+  .print-student-material[data-material-type="karta pracy"][data-profile="Obcojęzyczny"]
+    .print-worksheet-glossary dl {
+    row-gap: 1.3mm !important;
+    column-gap: 5mm !important;
+  }
+
+  .print-student-material[data-material-type="karta pracy"][data-profile="Obcojęzyczny"]
+    .print-worksheet-glossary :where(dt, dd) {
+    font-size: 9pt !important;
+    line-height: 1.2 !important;
+  }
+
+
+  /* =========================
      WSPÓLNY KLUCZ NAUCZYCIELA
   ========================= */
 
@@ -489,10 +728,41 @@
     margin-left: 0 !important;
   }
 
+  .print-grade-scale {
+    break-inside: avoid-page !important;
+    page-break-inside: avoid !important;
+  }
+
+  .print-grade-scale-columns {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    column-gap: 10mm !important;
+  }
+
+  .print-grade-scale-list {
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  .print-grade-scale-list > li + li {
+    margin-top: 0.7mm !important;
+  }
+
+  .print-grade-scale-item {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) auto !important;
+    column-gap: 4mm !important;
+    align-items: baseline !important;
+    padding: 0 !important;
+  }
+
   .print-hidden,
   .print\:hidden {
     display: none !important;
   }
+
+
 }
+
 
 

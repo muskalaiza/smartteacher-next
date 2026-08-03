@@ -1,272 +1,205 @@
-import assert from "node:assert/strict"
+import assert from "node:assert/strict";
 
 import {
   buildTaskPlan,
-} from "../lib/generation/buildTaskPlan.js"
+} from "../lib/generation/buildTaskPlan.js";
 
 import {
   buildMaterialResponseSchema,
-} from "../lib/generation/buildMaterialResponseSchema.js"
+} from "../lib/generation/buildMaterialResponseSchema.js";
 
 import {
   taskTypeSchemas,
-} from "../lib/generation/taskTypeSchemas.js"
+} from "../lib/generation/taskTypeSchemas.js";
 
 function assertTaskSchemas({
   schema,
   taskPlan,
   shouldGenerateAdhdSupport,
 }) {
-  const taskItems =
-    schema.properties.tasks.items
+  const taskItems = schema.properties.tasks.items;
 
   const taskSchemas =
     taskPlan.length === 1
       ? [taskItems]
-      : taskItems.anyOf
+      : taskItems.anyOf;
 
-  assert.equal(
-    taskSchemas.length,
-    taskPlan.length
-  )
+  assert.equal(taskSchemas.length, taskPlan.length);
 
-  taskSchemas.forEach(
-    (taskSchema, index) => {
+  taskSchemas.forEach((taskSchema, index) => {
+    assert.deepEqual(
+      taskSchema.properties.number.enum,
+      [index + 1]
+    );
+
+    assert.deepEqual(
+      taskSchema.properties.taskSubtype.enum,
+      [taskPlan[index].taskSubtype]
+    );
+
+    if (shouldGenerateAdhdSupport) {
+      const adhdSupport =
+        taskSchema.properties.adhdSupport;
+
+      assert.equal(adhdSupport.type, "object");
       assert.deepEqual(
-        taskSchema.properties.number.enum,
-        [index + 1]
-      )
-
+        adhdSupport.required,
+        ["focus", "steps", "checkpoint"]
+      );
+      assert.equal(
+        adhdSupport.properties.steps.minItems,
+        2
+      );
+      assert.equal(
+        adhdSupport.properties.steps.maxItems,
+        2
+      );
+    } else {
       assert.deepEqual(
-        taskSchema.properties.taskSubtype.enum,
-        [
-          taskPlan[index]
-            .taskSubtype,
-        ]
-      )
-
-      if (
-        shouldGenerateAdhdSupport
-      ) {
-        const adhdSupport =
-          taskSchema.properties
-            .adhdSupport
-
-        assert.equal(
-          adhdSupport.type,
-          "object"
-        )
-
-        assert.deepEqual(
-          adhdSupport.required,
-          [
-            "focus",
-            "steps",
-            "checkpoint",
-          ]
-        )
-
-        assert.equal(
-          adhdSupport.properties
-            .steps.minItems,
-          2
-        )
-
-        assert.equal(
-          adhdSupport.properties
-            .steps.maxItems,
-          2
-        )
-      } else {
-        assert.deepEqual(
-          taskSchema.properties
-            .adhdSupport,
-          {
-            type: "null",
-          }
-        )
-      }
+        taskSchema.properties.adhdSupport,
+        { type: "null" }
+      );
     }
-  )
+  });
 }
 
-function testStandardSchemas() {
-  for (
-    const taskCount of [
-      5,
-      6,
-      7,
-    ]
-  ) {
-    const taskPlan =
-      buildTaskPlan({
-        materialType:
-          "kartkówka",
+function testQuizSchemas() {
+  for (const taskCount of [5, 6, 7]) {
+    const taskPlan = buildTaskPlan({
+      materialType: "kartkówka",
+      taskCount,
+    });
 
-        taskCount,
-      })
-
-    const schema =
-      buildMaterialResponseSchema({
-        taskPlan,
-        shouldGenerateGlossary:
-          false,
-        shouldGenerateAdhdSupport:
-          false,
-      })
-
-    assert.equal(
-      schema.type,
-      "object"
-    )
-
-    assert.equal(
-      schema.additionalProperties,
-      false
-    )
+    const schema = buildMaterialResponseSchema({
+      materialType: "kartkówka",
+      taskPlan,
+      shouldGenerateGlossary: false,
+      shouldGenerateAdhdSupport: false,
+    });
 
     assert.deepEqual(
       schema.required,
-      [
-        "intro",
-        "tip",
-        "glossary",
-        "tasks",
-      ]
-    )
-
-    assert.deepEqual(
-      schema.properties.intro.enum,
-      [""]
-    )
-
-    assert.equal(
-      schema.properties.tip.minItems,
-      0
-    )
-
-    assert.equal(
-      schema.properties.tip.maxItems,
-      0
-    )
-
-    assert.equal(
-      schema.properties.glossary
-        .minItems,
-      0
-    )
-
-    assert.equal(
-      schema.properties.glossary
-        .maxItems,
-      0
-    )
-
-    assert.equal(
-      schema.properties.tasks
-        .minItems,
-      taskCount
-    )
-
-    assert.equal(
-      schema.properties.tasks
-        .maxItems,
-      taskCount
-    )
+      ["intro", "tip", "glossary", "tasks"]
+    );
+    assert.deepEqual(schema.properties.intro.enum, [""]);
+    assert.equal(schema.properties.tip.minItems, 0);
+    assert.equal(schema.properties.tip.maxItems, 0);
+    assert.equal(schema.properties.glossary.minItems, 0);
+    assert.equal(schema.properties.glossary.maxItems, 0);
+    assert.equal(schema.properties.tasks.minItems, taskCount);
+    assert.equal(schema.properties.tasks.maxItems, taskCount);
 
     assertTaskSchemas({
       schema,
       taskPlan,
-      shouldGenerateAdhdSupport:
-        false,
-    })
-
-    console.log(
-      `Schemat Standard, ${taskCount} zadań: OK`
-    )
+      shouldGenerateAdhdSupport: false,
+    });
   }
+
+  console.log("Schemat kartkówki 5/6/7: OK");
 }
 
-function testProfileOptions() {
-  const taskPlan =
-    buildTaskPlan({
-      materialType:
-        "karta pracy",
+function testWorksheetSchema() {
+  const taskPlan = buildTaskPlan({
+    materialType: "karta pracy",
+    taskCount: 5,
+  });
 
-      taskCount:
-        5,
-    })
+  const schema = buildMaterialResponseSchema({
+    materialType: "karta pracy",
+    taskPlan,
+    shouldGenerateGlossary: true,
+    shouldGenerateAdhdSupport: true,
+  });
 
-  const schema =
-    buildMaterialResponseSchema({
-      taskPlan,
-      shouldGenerateGlossary:
-        true,
-      shouldGenerateAdhdSupport:
-        true,
-    })
+  assert.equal(schema.properties.intro.type, "string");
+  assert.equal(schema.properties.intro.pattern, "\\S");
+  assert.equal(schema.properties.tip.minItems, 1);
+  assert.equal(schema.properties.tip.maxItems, 2);
+  assert.equal(schema.properties.glossary.minItems, 1);
+  assert.equal(schema.properties.glossary.maxItems, 5);
 
-  assert.equal(
-    schema.properties.glossary
-      .minItems,
-    1
-  )
+  assert.deepEqual(
+    schema.properties.tip.items.properties.code.anyOf,
+    [
+      {
+        type: "string",
+        pattern: "\\S",
+        description:
+          "Krótki przykład kodu zapisany bez znaczników Markdown.",
+      },
+      { type: "null" },
+    ]
+  );
 
   assertTaskSchemas({
     schema,
     taskPlan,
-    shouldGenerateAdhdSupport:
-      true,
-  })
+    shouldGenerateAdhdSupport: true,
+  });
 
-  console.log(
-    "Słowniczek i wsparcie ADHD: OK"
-  )
+  const openExplainSchema =
+    schema.properties.tasks.items.anyOf.find(
+      (taskSchema) =>
+        taskSchema.properties.taskSubtype.enum[0] ===
+        "open_explain"
+    );
+
+  assert.ok(openExplainSchema);
+  assert.equal(
+    Object.prototype.hasOwnProperty.call(
+      openExplainSchema.properties,
+      "context"
+    ),
+    false
+  );
+  assert.equal(
+    openExplainSchema.required.includes("context"),
+    false
+  );
+
+  console.log("Schemat karty pracy + ADHD + słowniczek: OK");
+}
+
+function testInvalidGlossaryContract() {
+  const taskPlan = buildTaskPlan({
+    materialType: "kartkówka",
+    taskCount: 5,
+  });
+
+  assert.throws(
+    () =>
+      buildMaterialResponseSchema({
+        materialType: "kartkówka",
+        taskPlan,
+        shouldGenerateGlossary: true,
+        shouldGenerateAdhdSupport: false,
+      }),
+    /wyłącznie dla karty pracy/
+  );
 }
 
 function main() {
-  const schemasBefore =
-    JSON.stringify(
-      taskTypeSchemas
-    )
+  const schemasBefore = JSON.stringify(taskTypeSchemas);
 
-  testStandardSchemas()
-  testProfileOptions()
+  testQuizSchemas();
+  testWorksheetSchema();
+  testInvalidGlossaryContract();
 
   assert.equal(
-    JSON.stringify(
-      taskTypeSchemas
-    ),
+    JSON.stringify(taskTypeSchemas),
     schemasBefore,
     "buildMaterialResponseSchema zmodyfikował bazowe taskTypeSchemas."
-  )
+  );
 
-  console.log(
-    "Bazowe taskTypeSchemas nie zostały zmienione: OK"
-  )
-
-  console.log(
-    "\nTEST BUILD MATERIAL RESPONSE SCHEMA: OK"
-  )
+  console.log("Bazowe taskTypeSchemas nie zostały zmienione: OK");
+  console.log("TEST BUILD MATERIAL RESPONSE SCHEMA: OK");
 }
 
 try {
-  main()
+  main();
 } catch (error) {
-  console.error(
-    "\nTEST BUILD MATERIAL RESPONSE SCHEMA: BŁĄD"
-  )
-
-  console.error(
-    error instanceof Error
-      ? error.message
-      : String(error)
-  )
-
-  process.exitCode = 1
+  console.error("TEST BUILD MATERIAL RESPONSE SCHEMA: BŁĄD");
+  console.error(error);
+  process.exitCode = 1;
 }
-
-/*
-Uruchomienie testu:
-node scripts/testBuildMaterialResponseSchema.mjs
-*/

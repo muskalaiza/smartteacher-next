@@ -3,6 +3,7 @@ import {
 } from "@/lib/generation/scoring";
 
 import GeneratedTask from "./GeneratedTask";
+import WorksheetSupport from "./WorksheetSupport";
 
 function BlankField({ label }) {
   return (
@@ -25,12 +26,23 @@ export default function GeneratedStudentMaterial({
   profileValue,
   profileLabel,
   topicTitle,
+  intro,
+  tips,
+  glossary,
   tasks,
 }) {
+  const isWorksheet =
+    materialTypeValue === "karta pracy";
+
+  const shouldShowGlossary =
+    isWorksheet &&
+    profileValue === "Obcojęzyczny";
+
   return (
     <article
       className="print-student-material space-y-6 rounded-2xl border border-zinc-700 bg-zinc-950 p-6 shadow-sm"
       data-profile={profileValue}
+      data-material-type={materialTypeValue}
     >
       <header className="space-y-5 border-b border-zinc-800 pb-6">
         <h3 className="text-xl font-bold uppercase tracking-wide text-zinc-50">
@@ -54,7 +66,16 @@ export default function GeneratedStudentMaterial({
         </p>
       </header>
 
-      <section className="space-y-4">
+      {isWorksheet ? (
+        <WorksheetSupport
+          intro={intro}
+          tips={tips}
+          glossary={glossary}
+          showGlossary={shouldShowGlossary}
+        />
+      ) : null}
+
+      <section className="print-student-tasks space-y-4">
         <h4 className="text-lg font-semibold text-zinc-50">
           Zadania dla ucznia
         </h4>

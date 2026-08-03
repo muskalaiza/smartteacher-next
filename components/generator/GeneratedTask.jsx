@@ -105,7 +105,71 @@ function AsdObjective({ children }) {
   );
 }
 
-function AdhdPlan({ plan }) {
+function CompactAsdSupport({
+  objective,
+  answerHint,
+}) {
+  return (
+    <div className="print-asd-support rounded-lg border border-violet-500/25 bg-violet-500/10 p-3 print:rounded-none print:border-0 print:bg-transparent print:p-0">
+      <p className="text-sm leading-5 text-violet-100 print:text-[8pt] print:leading-tight print:text-black">
+        <span className="font-semibold">
+          Cel:
+        </span>{" "}
+        {objective}
+      </p>
+
+      {answerHint ? (
+        <p className="print-asd-answer-hint mt-1 text-sm leading-5 text-violet-100 print:text-[8pt] print:leading-tight print:text-black">
+          <span className="font-semibold">
+            Sposób odpowiedzi:
+          </span>{" "}
+          {answerHint}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+function AdhdPlan({ plan, compact }) {
+  if (compact) {
+    return (
+      <div className="print-adhd-plan rounded-lg border border-sky-500/25 bg-sky-500/10 p-3 print:rounded-none print:border-0 print:bg-transparent print:p-0">
+        <p className="text-sm leading-5 text-zinc-100 print:text-[8pt] print:leading-tight print:text-black">
+          <span className="font-semibold text-sky-300 print:text-black">
+            Plan działania:
+          </span>{" "}
+          {plan.focus}
+        </p>
+
+        {plan.checkpoint ? (
+          <p className="print-adhd-checkpoint mt-1 text-sm leading-5 text-zinc-100 print:text-[8pt] print:leading-tight print:text-black">
+            <span className="font-semibold text-amber-200 print:text-black">
+              Sprawdź:
+            </span>{" "}
+            {plan.checkpoint}
+          </p>
+        ) : null}
+
+        {plan.steps.length > 0 ? (
+          <ol className="print-adhd-steps mt-2 space-y-1">
+            {plan.steps.map((step, index) => (
+              <li
+                key={`${index}-${step}`}
+                className="flex gap-2 text-sm leading-5 text-zinc-100 print:text-[8pt] print:leading-tight print:text-black"
+              >
+                <span className="font-semibold text-sky-400 print:text-black">
+                  {index + 1}.
+                </span>
+
+                <span>{step}</span>
+              </li>
+            ))}
+          </ol>
+        ) : null}
+      </div>
+    );
+  }
+
   return (
     <div className="rounded-lg border border-sky-500/25 bg-sky-500/10 p-3 print:rounded-none print:border-0 print:bg-transparent print:p-0">
       <p className="text-xs font-semibold uppercase tracking-wide text-sky-300 print:text-[8pt] print:leading-tight print:text-black">
@@ -168,11 +232,11 @@ function ClosedSingleTask({ task }) {
     <div className="space-y-4">
       <TaskText>{task.question}</TaskText>
 
-      <ul className="space-y-2">
+      <ul className="print-answer-options space-y-1">
         {task.options.map((option) => (
           <li
             key={option.id}
-            className="flex gap-3 rounded-lg border border-zinc-800 bg-zinc-900/70 px-4 py-3"
+            className="print-answer-option flex gap-3 rounded-lg border border-zinc-800 bg-zinc-900/70 px-4 py-2"
           >
             <span className="font-semibold text-sky-400">
               {option.id})
@@ -222,11 +286,11 @@ function MatchFillTask({ task }) {
       <div className="space-y-2">
         <SectionLabel>Podpowiedzi</SectionLabel>
 
-        <ul className="grid gap-2 sm:grid-cols-2">
+        <ul className="print-answer-options grid gap-1 sm:grid-cols-2">
           {task.hints.map((hint, index) => (
             <li
               key={`${task.number}-hint-${index}-${hint}`}
-              className="flex gap-3 rounded-lg border border-zinc-800 bg-zinc-900/70 px-4 py-3"
+              className="print-answer-option flex gap-3 rounded-lg border border-zinc-800 bg-zinc-900/70 px-4 py-2"
             >
               <span className="font-semibold text-sky-400">
                 {HINT_LABELS[index]})
@@ -345,16 +409,7 @@ function OpenCodeTask({ task }) {
 ========================= */
 
 function OpenExplainTask({ task }) {
-  return (
-    <div className="space-y-4">
-      <TaskText>{task.instruction}</TaskText>
-
-      <div className="space-y-2">
-        <SectionLabel>Kontekst do analizy</SectionLabel>
-        <CodeBlock>{task.context}</CodeBlock>
-      </div>
-    </div>
-  );
+  return <TaskText>{task.instruction}</TaskText>;
 }
 
 /* =========================
@@ -394,12 +449,22 @@ export default function GeneratedTask({
       materialTypeValue,
     });
 
+  const useCompactProfileSupport =
+    materialTypeValue === "karta pracy";
+
   return (
     <div className="space-y-4">
       {profilePresentation.objective ? (
-        <AsdObjective>
-          {profilePresentation.objective}
-        </AsdObjective>
+        useCompactProfileSupport ? (
+          <CompactAsdSupport
+            objective={profilePresentation.objective}
+            answerHint={profilePresentation.answerHint}
+          />
+        ) : (
+          <AsdObjective>
+            {profilePresentation.objective}
+          </AsdObjective>
+        )
       ) : null}
 
       <TaskRenderer task={task} />
@@ -407,10 +472,12 @@ export default function GeneratedTask({
       {profilePresentation.plan ? (
         <AdhdPlan
           plan={profilePresentation.plan}
+          compact={useCompactProfileSupport}
         />
       ) : null}
 
-      {profilePresentation.answerHint ? (
+      {profilePresentation.answerHint &&
+      !useCompactProfileSupport ? (
         <AsdAnswerHint>
           {profilePresentation.answerHint}
         </AsdAnswerHint>

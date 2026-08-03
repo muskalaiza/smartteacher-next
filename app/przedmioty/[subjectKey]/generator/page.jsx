@@ -15,6 +15,10 @@ import {
   requestMaterialGeneration,
 } from "@/lib/generation/generationApi";
 
+import {
+  isMaterialGenerationEnabled,
+} from "@/lib/generation/materialContracts";
+
 import GeneratedMaterial from "@/components/generator/GeneratedMaterial";
 
 const MATERIAL_TYPES = [
@@ -22,7 +26,7 @@ const MATERIAL_TYPES = [
     value: "karta pracy",
     label: "Karta pracy",
     description: "Materiał do pracy z uczniami podczas lekcji.",
-    disabled: true,
+    disabled: false,
   },
   {
     value: "kartkówka",
@@ -233,7 +237,7 @@ if (
 
 const canGenerate =
   Boolean(selectedLessonTopicId) &&
-  selectedMaterialType === "kartkówka" &&
+  isMaterialGenerationEnabled(selectedMaterialType) &&
   selectedProfiles.length > 0 &&
   !isGenerating;
 

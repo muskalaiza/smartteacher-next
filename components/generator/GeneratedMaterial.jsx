@@ -15,7 +15,8 @@ export default function GeneratedMaterial({ generationOutput }) {
   const [gradeScaleError, setGradeScaleError] = useState("");
 
   const generationResult = generationOutput?.result;
-  const tasks = generationResult?.material?.tasks;
+  const material = generationResult?.material;
+  const tasks = material?.tasks;
   const profiles = generationOutput?.profiles;
   const materialTypeLabel = generationOutput?.materialType?.label;
   const topicTitle = generationResult?.lessonTopic?.displayTitle;
@@ -91,6 +92,9 @@ export default function GeneratedMaterial({ generationOutput }) {
             profileValue={profile.value}
             profileLabel={profile.label}
             topicTitle={topicTitle}
+            intro={material?.intro}
+            tips={material?.tip}
+            glossary={material?.glossary}
             tasks={tasks}
           />
         ))}

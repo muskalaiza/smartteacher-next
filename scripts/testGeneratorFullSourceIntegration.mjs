@@ -30,17 +30,50 @@ import {
   getLessonTopicSourceContext,
 } from "../lib/generation/getLessonTopicSourceContext.js"
 
+import {
+  getMaterialContentSchemaVersion,
+  isMaterialGenerationEnabled,
+  normalizeMaterialType,
+} from "../lib/generation/materialContracts.js"
+
 const DOCX_MIME_TYPE =
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 
 const MATERIAL_TYPE =
-  "kartkówka"
+  normalizeMaterialType(
+    process.env
+      .GENERATOR_TEST_MATERIAL_TYPE ||
+      "karta pracy"
+  )
 
-const TASK_COUNT = 5
+if (!isMaterialGenerationEnabled(MATERIAL_TYPE)) {
+  throw new Error(
+    `Nieobsługiwany GENERATOR_TEST_MATERIAL_TYPE: ${MATERIAL_TYPE || "[brak]"}.`
+  )
+}
 
-const PROFILES = [
-  "Standard",
-]
+const TASK_COUNT = Number(
+  process.env.GENERATOR_TEST_TASK_COUNT || 5
+)
+
+if (![5, 6, 7].includes(TASK_COUNT)) {
+  throw new Error(
+    "GENERATOR_TEST_TASK_COUNT musi wynosić 5, 6 albo 7."
+  )
+}
+
+const PROFILES =
+  process.env.GENERATOR_TEST_PROFILES
+    ?.split(",")
+    .map((profile) => profile.trim())
+    .filter(Boolean) ||
+  [
+    "Standard",
+    "Dysleksja",
+    "ADHD",
+    "ASD",
+    "Obcojęzyczny",
+  ]
 
 const GENERATOR_MODEL =
   process.env
@@ -49,7 +82,9 @@ const GENERATOR_MODEL =
   "gpt-4o-mini"
 
 const CONTENT_SCHEMA_VERSION =
-  "material_schema_v1"
+  getMaterialContentSchemaVersion(
+    MATERIAL_TYPE
+  )
 
 function getRequiredEnvironmentVariable(
   name
@@ -257,6 +292,8 @@ async function getReferenceMetadata({
 
 function assertGeneratedMaterial({
   generatedMaterial,
+  materialType,
+  profiles,
   taskPlan,
 }) {
   assert.ok(
@@ -269,20 +306,58 @@ function assertGeneratedMaterial({
     "Generator nie zwrócił obiektu materiału."
   )
 
-  assert.equal(
-    generatedMaterial.intro,
-    ""
-  )
+  const isWorksheet =
+    materialType === "karta pracy"
 
-  assert.deepEqual(
-    generatedMaterial.tip,
-    []
-  )
+  if (isWorksheet) {
+    assert.ok(
+      typeof generatedMaterial.intro ===
+        "string" &&
+        generatedMaterial.intro.trim(),
+      "Karta pracy nie zawiera intro."
+    )
 
-  assert.deepEqual(
-    generatedMaterial.glossary,
-    []
-  )
+    assert.ok(
+      Array.isArray(
+        generatedMaterial.tip
+      ) &&
+        generatedMaterial.tip.length >= 1 &&
+        generatedMaterial.tip.length <= 2,
+      "Karta pracy nie zawiera prawidłowej mini-ściągawki."
+    )
+  } else {
+    assert.equal(
+      generatedMaterial.intro,
+      ""
+    )
+
+    assert.deepEqual(
+      generatedMaterial.tip,
+      []
+    )
+  }
+
+  const shouldGenerateGlossary =
+    isWorksheet &&
+    profiles.includes(
+      "Obcojęzyczny"
+    )
+
+  if (shouldGenerateGlossary) {
+    assert.ok(
+      Array.isArray(
+        generatedMaterial.glossary
+      ) &&
+        generatedMaterial.glossary.length >= 1 &&
+        generatedMaterial.glossary.length <= 5,
+      "Karta pracy dla profilu Obcojęzycznego nie zawiera prawidłowego słowniczka."
+    )
+  } else {
+    assert.deepEqual(
+      generatedMaterial.glossary,
+      []
+    )
+  }
 
   assert.ok(
     Array.isArray(
@@ -296,6 +371,9 @@ function assertGeneratedMaterial({
     taskPlan.length,
     "Liczba wygenerowanych zadań nie odpowiada taskPlan."
   )
+
+  const shouldGenerateAdhdSupport =
+    profiles.includes("ADHD")
 
   generatedMaterial.tasks.forEach(
     (task, index) => {
@@ -321,11 +399,24 @@ function assertGeneratedMaterial({
         `Zadanie ${task.number} nie ma prawidłowej treści question.`
       )
 
-      assert.equal(
-        task.adhdSupport,
-        null,
-        `Zadanie ${task.number} nie powinno zawierać wsparcia ADHD dla profilu Standard.`
-      )
+      if (shouldGenerateAdhdSupport) {
+        assert.ok(
+          task.adhdSupport &&
+            typeof task.adhdSupport ===
+              "object" &&
+            Array.isArray(
+              task.adhdSupport.steps
+            ) &&
+            task.adhdSupport.steps.length === 2,
+          `Zadanie ${task.number} nie zawiera prawidłowego wsparcia ADHD.`
+        )
+      } else {
+        assert.equal(
+          task.adhdSupport,
+          null,
+          `Zadanie ${task.number} nie powinno zawierać wsparcia ADHD.`
+        )
+      }
     }
   )
 }
@@ -416,7 +507,7 @@ async function main() {
   )
 
   console.log(
-    `Materiał: ${MATERIAL_TYPE}, ${TASK_COUNT} zadań, profil Standard`
+    `Materiał: ${MATERIAL_TYPE}, ${TASK_COUNT} zadań, profile: ${PROFILES.join(", ")}`
   )
 
   try {
@@ -678,6 +769,14 @@ async function main() {
     assertGeneratedMaterial({
       generatedMaterial:
         generationResult.material,
+
+      materialType:
+        generationManifest
+          .materialType,
+
+      profiles:
+        generationManifest
+          .profiles,
 
       taskPlan:
         generationManifest

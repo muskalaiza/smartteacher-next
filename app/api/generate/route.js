@@ -28,6 +28,11 @@ import {
   LessonTopicSourceNotFoundError,
 } from "@/lib/generation/getLessonTopicSourceContext"
 
+import {
+  getMaterialContentSchemaVersion,
+  isMaterialGenerationEnabled,
+} from "@/lib/generation/materialContracts"
+
 export const runtime = "nodejs"
 
 const GENERATOR_MODEL =
@@ -35,9 +40,6 @@ const GENERATOR_MODEL =
 
 const GENERATOR_VERSION =
   "generator_v1"
-
-const CONTENT_SCHEMA_VERSION =
-  "material_schema_v1"
 
 const ALLOWED_PROFILES = new Set([
   "Standard",
@@ -395,8 +397,7 @@ export async function POST(
     }
 
     /*
-      4. Aktualny pionowy przepływ
-      obsługuje kartkówkę.
+      4. Walidacja aktywnego typu materiału.
     */
     const materialType =
       typeof requestBody
@@ -408,18 +409,18 @@ export async function POST(
             .toLowerCase()
         : ""
 
-    if (
-      materialType !==
-        "kartkówka"
-    ) {
+    if (!isMaterialGenerationEnabled(materialType)) {
       return jsonResponse(
         {
           error:
-            "Pierwsza wersja Generatora obsługuje obecnie kartkówkę.",
+            "Generator obsługuje obecnie kartę pracy i kartkówkę.",
         },
         400
       )
     }
+
+    const contentSchemaVersion =
+      getMaterialContentSchemaVersion(materialType)
 
     /*
       5. Walidacja liczby zadań.
@@ -549,8 +550,7 @@ export async function POST(
         generatorVersion:
           GENERATOR_VERSION,
 
-        contentSchemaVersion:
-          CONTENT_SCHEMA_VERSION,
+        contentSchemaVersion,
 
         model:
           GENERATOR_MODEL,

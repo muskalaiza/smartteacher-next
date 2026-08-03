@@ -97,25 +97,40 @@ function GradeScaleSection({
   }
 
   const ranges = buildTeacherGradeScaleRanges(gradeScale);
+  const firstColumnLength = Math.ceil(ranges.length / 2);
+  const rangeColumns = [
+    ranges.slice(0, firstColumnLength),
+    ranges.slice(firstColumnLength),
+  ];
 
   return (
-    <section className="mt-5 border-t border-zinc-700 pt-4 print:mt-3 print:border-zinc-500 print:pt-3">
+    <section className="print-grade-scale mt-5 border-t border-zinc-700 pt-4 print:mt-3 print:border-zinc-500 print:pt-3">
       <h4 className="text-lg font-bold text-zinc-50 print:text-[11pt] print:text-black">
         Skala ocen
       </h4>
 
-      <ol className="mt-3 grid gap-2 text-sm text-zinc-200 sm:grid-cols-2 print:mt-1 print:grid-cols-2 print:gap-x-6 print:gap-y-0 print:text-[9pt] print:text-black">
-        {ranges.map((range) => (
-          <li key={range.grade} className="flex justify-between gap-4">
-            <span>
-              {range.grade} — {range.label}
-            </span>
-            <span className="shrink-0 font-semibold">
-              {range.min}–{range.max}%
-            </span>
-          </li>
+      <div className="print-grade-scale-columns mt-3 grid gap-x-8 gap-y-0 text-sm text-zinc-200 sm:grid-cols-2 print:mt-1 print:grid-cols-2 print:text-[9pt] print:text-black">
+        {rangeColumns.map((column, columnIndex) => (
+          <ol
+            key={`grade-scale-column-${columnIndex}`}
+            className="print-grade-scale-list space-y-2"
+          >
+            {column.map((range) => (
+              <li
+                key={range.grade}
+                className="print-grade-scale-item flex justify-between gap-4"
+              >
+                <span>
+                  {range.grade} — {range.label}
+                </span>
+                <span className="shrink-0 font-semibold">
+                  {range.min}–{range.max}%
+                </span>
+              </li>
+            ))}
+          </ol>
         ))}
-      </ol>
+      </div>
     </section>
   );
 }

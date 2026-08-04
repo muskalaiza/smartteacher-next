@@ -4,6 +4,7 @@ import {
   buildTeacherAnswerKey,
   TEACHER_ANSWER_KEY_VERSION,
 } from "../lib/generation/buildTeacherAnswerKey.js";
+import { buildTaskPlan } from "../lib/generation/buildTaskPlan.js";
 import {
   calculateTotalPoints,
   getTaskPoints,
@@ -58,13 +59,6 @@ const TASKS = [
   },
 ];
 
-function task(taskSubtype, number) {
-  return {
-    number,
-    taskSubtype,
-  };
-}
-
 const answerKey = buildTeacherAnswerKey(TASKS);
 
 assert.equal(
@@ -86,41 +80,56 @@ assert.equal(
   "code"
 );
 
-assert.equal(
-  calculateTotalPoints([
-    task("closed_single", 1),
-    task("closed_tf", 2),
-    task("match_pair", 3),
-    task("match_fill", 4),
-    task("error_find", 5),
-  ]),
-  9
-);
+const EXPECTED_TOTAL_POINTS = [
+  {
+    materialType: "karta pracy",
+    totals: {
+      5: 11,
+      6: 14,
+      7: 17,
+    },
+  },
+  {
+    materialType: "kartkówka",
+    totals: {
+      5: 9,
+      6: 14,
+      7: 19,
+    },
+  },
+  {
+    materialType: "sprawdzian",
+    totals: {
+      5: 9,
+      6: 14,
+      7: 19,
+    },
+  },
+];
 
-assert.equal(
-  calculateTotalPoints([
-    task("error_find", 1),
-    task("closed_single", 2),
-    task("match_pair", 3),
-    task("match_fill", 4),
-    task("open_explain", 5),
-    task("open_code", 6),
-  ]),
-  14
-);
+for (const {
+  materialType,
+  totals,
+} of EXPECTED_TOTAL_POINTS) {
+  for (const taskCount of [5, 6, 7]) {
+    const taskPlan = buildTaskPlan({
+      materialType,
+      taskCount,
+    });
 
-assert.equal(
-  calculateTotalPoints([
-    task("open_explain", 1),
-    task("open_code", 2),
-    task("error_find", 3),
-    task("match_fill", 4),
-    task("match_pair", 5),
-    task("open_code", 6),
-    task("open_explain", 7),
-  ]),
-  19
-);
+    assert.equal(
+      taskPlan.length,
+      taskCount,
+      `${materialType}: plan musi zawierać ${taskCount} zadań.`
+    );
+
+    assert.equal(
+      calculateTotalPoints(taskPlan),
+      totals[taskCount],
+      `${materialType}, ${taskCount} zadań: nieprawidłowa suma punktów.`
+    );
+  }
+}
 
 assert.throws(
   () => getTaskPoints({ taskSubtype: "unknown" }),
@@ -128,5 +137,5 @@ assert.throws(
 );
 
 console.log(
-  "OK: wspólny klucz nauczyciela, punktacja siedmiu typów i sumy 5/6/7 są poprawne."
+  "OK: wspólny klucz, punktacja siedmiu typów i sumy dla 3 materiałów × 5/6/7 są poprawne."
 );

@@ -1,6 +1,6 @@
 "use client";
 
-import { Printer } from "lucide-react";
+import { FileDown, Printer } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { getTeacherGradeScale } from "@/lib/gradeScale/teacherGradeScaleApi";
@@ -13,6 +13,8 @@ export default function GeneratedMaterial({ generationOutput }) {
   const [gradeScale, setGradeScale] = useState(null);
   const [isGradeScaleLoading, setIsGradeScaleLoading] = useState(true);
   const [gradeScaleError, setGradeScaleError] = useState("");
+  const [isDocxExporting, setIsDocxExporting] = useState(false);
+  const [docxExportError, setDocxExportError] = useState("");
 
   const generationResult = generationOutput?.result;
   const material = generationResult?.material;
@@ -67,6 +69,34 @@ export default function GeneratedMaterial({ generationOutput }) {
     window.print();
   }
 
+  async function handleDocxExport() {
+    setDocxExportError("");
+    setIsDocxExporting(true);
+
+    try {
+      const { exportMaterialToDocx } = await import(
+        "@/lib/export/exportDocx"
+      );
+
+      await exportMaterialToDocx({
+        materialTypeValue,
+        materialTypeLabel,
+        topicTitle,
+        profiles,
+        material,
+        gradeScale,
+      });
+    } catch (error) {
+      setDocxExportError(
+        error instanceof Error
+          ? error.message
+          : "Nie udało się przygotować pliku DOCX."
+      );
+    } finally {
+      setIsDocxExporting(false);
+    }
+  }
+
   return (
     <section className="space-y-6">
       <div className="flex flex-wrap gap-3 print:hidden">
@@ -81,7 +111,25 @@ export default function GeneratedMaterial({ generationOutput }) {
             ? "Przygotowywanie wydruku..."
             : "Drukuj / Zapisz PDF"}
         </button>
+
+        <button
+          type="button"
+          onClick={handleDocxExport}
+          disabled={isGradeScaleLoading || isDocxExporting}
+          className="flex items-center justify-center gap-2 rounded-xl border border-zinc-700 bg-zinc-900 px-5 py-3 font-semibold text-zinc-200 transition hover:border-sky-500/40 hover:bg-sky-500/10 hover:text-sky-200 focus:outline-none focus:ring-2 focus:ring-sky-500/30 disabled:cursor-wait disabled:opacity-60"
+        >
+          <FileDown className="h-4 w-4" aria-hidden="true" />
+          {isDocxExporting
+            ? "Przygotowywanie DOCX..."
+            : "Pobierz DOCX"}
+        </button>
       </div>
+
+      {docxExportError ? (
+        <p className="text-sm text-red-300 print:hidden">
+          {docxExportError}
+        </p>
+      ) : null}
 
       <div className="print-materials space-y-8">
         {profiles.map((profile) => (

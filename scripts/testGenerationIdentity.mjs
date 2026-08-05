@@ -176,6 +176,48 @@ assert.notEqual(
   "Zmiana modelu musi powodować cache MISS."
 )
 
+const testIdentity =
+  buildGenerationIdentity({
+    ...baseArguments,
+    lessonTopicId: null,
+    lessonSectionId:
+      "lesson-section-1",
+    topicTitle:
+      "Dział testowy",
+    materialType:
+      "sprawdzian",
+  })
+
+assert.equal(
+  testIdentity
+    .generationManifest
+    .lessonSectionId,
+  "lesson-section-1"
+)
+
+assert.equal(
+  Object.prototype.hasOwnProperty.call(
+    testIdentity
+      .generationManifest,
+    "lessonTopicId"
+  ),
+  false
+)
+
+assert.throws(
+  () =>
+    buildGenerationIdentity({
+      ...baseArguments,
+      lessonTopicId:
+        "lesson-topic-1",
+      lessonSectionId:
+        "lesson-section-1",
+      materialType:
+        "sprawdzian",
+    }),
+  /lessonTopicId.*null/
+)
+
 console.log(
   "Generation identity tests OK"
 )

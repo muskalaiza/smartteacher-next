@@ -25,7 +25,7 @@ assert.equal(
 
 assert.equal(
   isMaterialGenerationEnabled("sprawdzian"),
-  false
+  true
 );
 
 assert.equal(
@@ -35,17 +35,41 @@ assert.equal(
 
 assert.equal(
   getMaterialContentSchemaVersion("kartkówka"),
-  "material_schema_v2"
-);
-
-assert.equal(
-  getMaterialContentSchemaVersion("karta pracy"),
   "material_schema_v3"
 );
 
 assert.equal(
+  getMaterialContentSchemaVersion("karta pracy"),
+  "material_schema_v4"
+);
+
+assert.equal(
   getMaterialContentSchemaVersion("sprawdzian"),
-  "material_schema_v2"
+  "material_schema_v4"
+);
+
+assert.equal(
+  isMaterialContentSchemaVersionSupported({
+    materialType: "kartkówka",
+    contentSchemaVersion: "material_schema_v3",
+  }),
+  true
+);
+
+assert.equal(
+  isMaterialContentSchemaVersionSupported({
+    materialType: "karta pracy",
+    contentSchemaVersion: "material_schema_v4",
+  }),
+  true
+);
+
+assert.equal(
+  isMaterialContentSchemaVersionSupported({
+    materialType: "sprawdzian",
+    contentSchemaVersion: "material_schema_v4",
+  }),
+  true
 );
 
 assert.equal(
@@ -84,6 +108,14 @@ assert.equal(
   isMaterialContentSchemaVersionSupported({
     materialType: "sprawdzian",
     contentSchemaVersion: "material_schema_v1",
+  }),
+  true
+);
+
+assert.equal(
+  isMaterialContentSchemaVersionSupported({
+    materialType: "sprawdzian",
+    contentSchemaVersion: "material_schema_v3",
   }),
   true
 );

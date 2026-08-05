@@ -1,17 +1,17 @@
 # SmartTeacher — database_architecture_v1.md
 
-**Wersja dokumentu:** 2.3  
-**Data aktualizacji:** 02.08.2026  
+**Wersja dokumentu:** 2.7  
+**Data aktualizacji:** 04.08.2026  
 **Projekt:** `smartteacher-next`  
 **Supabase:** `smartteacher-next-dev`  
-**Status:** aktualna architektura robocza; Generator, atomowy cache, cleanup i Historia Generowań są wdrożone  
+**Status:** aktualna architektura robocza; Generator kartkówki i karty pracy, atomowy cache, Historia, wspólny klucz, punktacja, indywidualna skala ocen i eksport DOCX są wdrożone  
 **Uwaga:** nazwa pliku pozostaje bez zmiany ze względu na ciągłość źródeł projektu.
 
 ---
 
 ## 0. CEL DOKUMENTU
 
-Dokument opisuje aktualny model danych SmartTeacher oraz decyzje obowiązujące przy dalszym rozwoju Generatora, cache, Historii i wspólnego klucza nauczyciela.
+Dokument opisuje aktualny model danych SmartTeacher oraz decyzje obowiązujące przy dalszym rozwoju Generatora kartkówki i karty pracy, cache, Historii, wspólnego klucza nauczyciela, punktacji, indywidualnej skali ocen i eksportu DOCX.
 
 Nie jest jedną migracją SQL. Rzeczywiste migracje znajdują się w:
 
@@ -53,6 +53,8 @@ Frontend może odczytywać własne dane zgodnie z polityką. Operacje wymagając
 - `service_role` ma `SELECT` na `public.subjects`, ponieważ Route Handler zapisuje snapshot nazwy przedmiotu,
 - `create_private_lesson_catalog_from_import(uuid, uuid, uuid, text, text, text)` może wykonywać `authenticated`,
 - aktualna funkcja importu CSV nie jest wykonywalna przez `PUBLIC` ani `anon`,
+- `authenticated` ma `SELECT`, `INSERT` i `UPDATE` wyłącznie do własnego rekordu w `teacher_grade_scales`,
+- `anon` nie ma grantu do `teacher_grade_scales`,
 - nie nadajemy dodatkowych praw zapisu, jeśli nie są potrzebne.
 
 ### 1.3. Jedna odpowiedzialność
@@ -115,7 +117,15 @@ generated_materials
 → lista Historii
 → pojedynczy content_json
 → GeneratedMaterial
+→ materiały uczniów
+→ jeden wspólny TeacherAnswerKey
 → wydruk / PDF
+→ eksport DOCX na żądanie
+
+auth.users
+→ teacher_grade_scales
+→ aktualna skala konta
+→ TeacherAnswerKey i eksport DOCX
 ```
 
 ---
@@ -367,7 +377,25 @@ W głównym runtime nie używamy:
 - `isSupported`,
 - cache coverage.
 
-Route Handler obecnie obsługuje pionowy przepływ `kartkówka`.
+Route Handler obecnie obsługuje pionowe przepływy:
+
+```text
+kartkówka
+karta pracy
+```
+
+`sprawdzian` pozostaje nieaktywny do osobnego audytu zakresu źródeł.
+
+Dla karty pracy wynik zawiera:
+
+```text
+intro
+tip[]
+glossary[]
+tasks[]
+```
+
+`glossary` jest renderowany wyłącznie dla profilu Obcojęzycznego. Wszystkie profile korzystają z tego samego bazowego zestawu `tasks`.
 
 ---
 
@@ -442,6 +470,16 @@ generator_version
 content_schema_version
 model
 ```
+
+Aktualne wersje kontraktów:
+
+```text
+karta pracy → material_schema_v3
+kartkówka    → material_schema_v2
+sprawdzian  → material_schema_v2
+```
+
+Wersja jest częścią `generation_fingerprint`, dlatego zmiana kontraktu powoduje cache MISS bez zmiany schematu tabeli.
 
 Klucz cache:
 
@@ -805,13 +843,23 @@ status = ready
 Przed renderowaniem kontrolowane są:
 
 ```text
-content_schema_version = material_schema_v1
 obsługiwany material_type
+obsługiwana wersja content_schema_version dla danego typu
 niepusta lista profiles
 content_json jako obiekt
 tasks jako niepusta tablica
 tasks.length = task_count
 ```
+
+Historia obsługuje:
+
+```text
+karta pracy → material_schema_v2, material_schema_v3
+kartkówka    → material_schema_v1, material_schema_v2
+sprawdzian  → material_schema_v1, material_schema_v2
+```
+
+Starsze pole `context` w `open_explain` nie jest renderowane uczniowi.
 
 ### 12.4. Zachowanie tylko do odczytu
 
@@ -828,7 +876,7 @@ Otwarcie z Historii:
 
 Materiał jest renderowany z istniejącego `content_json`.
 
-### 12.5. UI i eksport PDF
+### 12.5. UI, eksport PDF i eksport DOCX
 
 Materiał otwiera się na tej samej stronie Historii.
 
@@ -837,6 +885,7 @@ Dostępne są:
 ```text
 „Wróć do historii”
 „Drukuj / Zapisz PDF”
+„Pobierz DOCX”
 ```
 
 Historia pokazuje:
@@ -848,19 +897,28 @@ created_at
 
 PDF jest generowany ponownie przez przeglądarkę z zapisanego `content_json`.
 
-PDF nie jest przechowywany jako plik w Storage. Treść materiału pozostaje ta sama, ale przyszłe zmiany CSS albo rendererów mogą zmienić wygląd ponownie wygenerowanego PDF.
+DOCX jest budowany klientowo po kliknięciu przez dynamicznie załadowany `lib/export/exportDocx.js`. Eksporter otrzymuje istniejący `content_json`, profile i aktualną skalę ocen. Nie wywołuje Generatora ani modelu.
+
+PDF i DOCX nie są przechowywane jako pliki w Storage. Treść materiału pozostaje ta sama, ale przyszłe zmiany CSS mogą zmienić wygląd PDF, a zmiany eksportera mogą zmienić wygląd ponownie pobranego DOCX.
 
 ### 12.6. Live schemat i dane
 
-Weryfikacja live Supabase z 02.08.2026 potwierdziła:
+Weryfikacja live Supabase z 02.08.2026 potwierdziła wcześniejsze rekordy kartkówki `material_schema_v1`.
+
+Test runtime z 03.08.2026 potwierdził zapis karty pracy:
 
 ```text
-6 rekordów ready
-material_type = kartkówka
-content_schema_version = material_schema_v1
-6 rekordów z content_json
-0 rekordów ready bez content_json
+material_type = karta pracy
+status = ready
+content_schema_version = material_schema_v3
+access_count = 1
+content_json istnieje
+prompt_tokens = 3855
+completion_tokens = 1447
+total_tokens = 5302
 ```
+
+Historia wyświetliła i ponownie wyrenderowała ten rekord bez wywołania modelu.
 
 Indeks Historii:
 
@@ -872,13 +930,367 @@ generated_materials_owner_subject_history_idx
 → WHERE status = ready
 ```
 
-Filtry `karta pracy` i `sprawdzian` poprawnie pokazują stan pusty do czasu uruchomienia tych przepływów.
+Filtr `karta pracy` pokazuje zapisane rekordy. Filtr `sprawdzian` pozostaje pusty do uruchomienia tego przepływu.
 
 Osobną tabelę zdarzeń można dodać później wyłącznie po pojawieniu się realnej potrzeby audytu każdego kliknięcia, retry albo rozliczeń per request.
 
 ---
 
-## 13. ELEMENTY WYCOFANE I ZACHOWANE
+## 12.7. Kontrakt treści materiałów
+
+Aktualny parser zapisuje wyłącznie wynik po walidacji Structured Outputs.
+
+Karta pracy:
+
+```text
+intro: string
+tip: array
+glossary: array
+tasks: array
+```
+
+Kartkówka:
+
+```text
+intro = ""
+tip = []
+glossary = []
+tasks: array
+```
+
+`open_explain`:
+
+```text
+instruction
+expectedAnswer
+answerExplanation
+```
+
+Pole `context` nie należy do aktualnego kontraktu ucznia. Historyczne pole może istnieć w starszym `content_json`, ale renderer i normalizacja go ignorują.
+
+Warstwy ASD, ADHD, Dysleksji i Obcojęzycznego są prezentacją tego samego bazowego zestawu zadań, nie osobnymi rekordami ani osobnymi wywołaniami modelu.
+
+---
+
+## 13. WSPÓLNY KLUCZ, PUNKTACJA I SKALA OCEN — WDROŻONE
+
+### 13.1. Wspólny klucz nauczyciela
+
+Wspólny klucz nie jest osobnym rekordem bazy i nie wymaga nowej tabeli.
+
+Przepływ:
+
+```text
+generated_materials.content_json
+→ components/generator/GeneratedMaterial.jsx
+→ lib/generation/buildTeacherAnswerKey.js
+→ components/generator/TeacherAnswerKey.jsx
+```
+
+Klucz:
+
+- jest budowany z istniejących pól odpowiedzi i wyjaśnień siedmiu typów zadań,
+- występuje jeden raz po wszystkich profilach uczniowskich,
+- działa w Generatorze i Historii przez ten sam komponent,
+- nie uruchamia modelu,
+- nie zmienia `content_json`,
+- nie tworzy nowego rekordu `generated_materials`,
+- jest zawsze widoczny na wydruku i rozpoczyna się na nowej stronie.
+
+### 13.2. Punktacja
+
+Źródło prawdy:
+
+```text
+lib/generation/scoring.js
+```
+
+Aktualna mapa:
+
+```text
+closed_single  → 1 pkt
+closed_tf      → 1 pkt
+match_fill     → 2 pkt
+error_find     → 2 pkt
+match_pair     → 3 pkt
+open_code      → 3 pkt
+open_explain   → 3 pkt
+```
+
+Punkty są wyliczane w warstwie aplikacji na podstawie `taskSubtype`. Nie są generowane przez model i nie są zapisywane jako osobne pola w `generated_materials`.
+
+Dla aktualnych `templates.js` suma zależy od typu materiału i liczby zadań:
+
+```text
+karta pracy  → 5 zadań: 11 pkt | 6 zadań: 14 pkt | 7 zadań: 17 pkt
+kartkówka    → 5 zadań:  9 pkt | 6 zadań: 14 pkt | 7 zadań: 19 pkt
+sprawdzian   → 5 zadań:  9 pkt | 6 zadań: 14 pkt | 7 zadań: 19 pkt
+```
+
+Test buduje każdy plan przez `buildTaskPlan()` i pobiera typy z `templates.js`. Nie istnieje jedna uniwersalna suma dla samej liczby 5 / 6 / 7. Kartkówka i sprawdzian mają obecnie takie same sumy, ponieważ ich aktualne szablony zawierają tę samą liczbę zadań o poszczególnych wagach; po zmianie szablonów sumy mogą się różnić.
+
+Stara statyczna `GRADE_SCALE` oraz `renderGradeScale()` zostały usunięte z `scoring.js`. Nie istnieje drugi kodowy słownik progów ocen.
+
+Korekta testu sum punktów nie zmienia schematu Supabase, `content_json`, `generated_materials`, `generation_fingerprint` ani cache. Jest wyłącznie regresją kodową opartą na aktualnym planie z `templates.js`.
+
+### 13.3. `teacher_grade_scales`
+
+Tabela przechowuje jeden aktywny zestaw progów dla nauczyciela.
+
+Migracja:
+
+```text
+supabase/sql/2026-08-03_teacher_grade_scales.sql
+```
+
+Pola:
+
+```text
+owner_id uuid primary key
+  → auth.users(id) on delete cascade
+
+grade_2_min smallint not null
+grade_3_min smallint not null
+grade_4_min smallint not null
+grade_5_min smallint not null
+grade_6_min smallint not null
+
+scale_schema_version text not null
+  → teacher_grade_scale_v1
+
+created_at timestamptz not null
+updated_at timestamptz not null
+```
+
+Constraints:
+
+```text
+każdy próg: 1–100
+
+grade_2_min
+< grade_3_min
+< grade_4_min
+< grade_5_min
+< grade_6_min
+
+scale_schema_version = teacher_grade_scale_v1
+```
+
+Trigger aktualizuje `updated_at` przed każdym `UPDATE`.
+
+Ocena 1 nie ma osobnej kolumny. Jej zakres zawsze rozpoczyna się od `0%`. Górne granice wszystkich ocen są wyliczane w aplikacji na podstawie kolejnego progu minimalnego.
+
+### 13.4. RLS i granty skali
+
+Tabela ma włączone RLS.
+
+`authenticated`:
+
+```text
+SELECT własnego rekordu
+INSERT własnego rekordu
+UPDATE własnego rekordu
+```
+
+Warunek każdej polityki:
+
+```text
+owner_id = auth.uid()
+```
+
+`authenticated` nie otrzymuje `DELETE`. `anon` nie ma żadnego grantu. `service_role` ma pełne prawa techniczne.
+
+### 13.5. Warstwa aplikacji
+
+Logika i API:
+
+```text
+lib/gradeScale/teacherGradeScale.js
+lib/gradeScale/teacherGradeScaleApi.js
+```
+
+UI:
+
+```text
+app/ustawienia/page.jsx
+```
+
+Formularz:
+
+- zawiera pięć progów dla ocen 2–6,
+- nie obsługuje importu CSV,
+- waliduje liczby całkowite, zakres `1–100` i ścisłą kolejność,
+- wykonuje `upsert` po `owner_id`,
+- pokazuje podgląd sześciu wyliczonych zakresów.
+
+Domyślne wartości widoczne przed pierwszym zapisem:
+
+```text
+40 / 55 / 70 / 85 / 95
+```
+
+Wartości stają się aktywną skalą dopiero po zapisie rekordu.
+
+### 13.6. Relacja z `teacher_profiles`
+
+Weryfikacja live Supabase z 03.08.2026 potwierdziła istniejącą tabelę `teacher_profiles` z polami:
+
+```text
+id
+user_id
+display_name
+email
+role
+is_active
+created_at
+updated_at
+```
+
+Skala nie została dopisana do `teacher_profiles`. `teacher_grade_scales` jest odrębnym bytem biznesowym i jest powiązana bezpośrednio z `auth.users` przez `owner_id`.
+
+### 13.7. Semantyka Historii i cache
+
+Zatwierdzona reguła:
+
+```text
+jedna aktywna skala konta
+→ aktualna skala jest używana także przy wcześniejszych materiałach z Historii
+```
+
+Skala jest pobierana klientowo przez `GeneratedMaterial` podczas renderowania. Ten sam przepływ działa bezpośrednio po generowaniu oraz po otwarciu zapisanego `content_json` z Historii.
+
+Skala nie jest snapshotem materiału i nie należy do:
+
+- `content_json`,
+- `content_schema_version`,
+- `generation_fingerprint`,
+- `claim_generated_material`,
+- tożsamości cache,
+- usage tokenów.
+
+Zmiana progów:
+
+- nie uruchamia `/api/generate`,
+- nie tworzy nowego rekordu `generated_materials`,
+- nie zwiększa `access_count`,
+- nie aktualizuje `last_accessed_at`,
+- jest widoczna przy ponownym otwarciu także starszego materiału.
+
+Przy braku zapisanego rekordu materiał pozostaje dostępny. UI pokazuje odnośnik do `/ustawienia`, a sekcja skali nie jest drukowana.
+
+### 13.8. Regresja
+
+Potwierdzono:
+
+- zapis i aktualizację jednego rekordu skali,
+- odczyt skali po odświeżeniu,
+- działanie skali w Generatorze,
+- działanie skali dla wcześniejszego materiału z Historii,
+- poprawny układ dwóch kolumn w wydruku / PDF,
+- poprawne zakresy dla `40 / 55 / 70 / 85 / 95`,
+- poprawne testy `testTeacherGradeScale.mjs` i `testTeacherAnswerKey.mjs`,
+- czysty lint i build.
+
+## 14. EKSPORT DOCX — WDROŻONY
+
+### 14.1. Warstwa kodu
+
+```text
+components/generator/GeneratedMaterial.jsx
+→ przycisk „Pobierz DOCX”
+→ dynamiczny import eksportera
+
+lib/export/exportDocx.js
+→ buildMaterialDocx()
+→ exportMaterialToDocx()
+
+scripts/testExportDocx.mjs
+→ test rzeczywistej serializacji i treści DOCX
+```
+
+Zależność klienta:
+
+```text
+docx = 9.5.1
+```
+
+`file-saver` nie jest używany. Blob jest pobierany przez natywny, tymczasowy link przeglądarki.
+
+### 14.2. Kontrakt wejścia
+
+Eksporter otrzymuje:
+
+```text
+materialTypeValue
+materialTypeLabel
+topicTitle
+profiles [{ value, label }]
+material = sparsowany content_json
+gradeScale = aktualna skala konta albo null
+```
+
+Nie odczytuje ponownie:
+
+- `teacher_documents`,
+- `document_blocks`,
+- `document_chunks`,
+- modelu,
+- cache claimu.
+
+### 14.3. Źródła prawdy
+
+```text
+getTaskProfilePresentation()
+→ prezentacja ASD i ADHD
+
+getTaskPoints()
+→ punktacja zadań ucznia
+
+buildTeacherAnswerKey()
+→ jeden wspólny klucz
+
+buildTeacherGradeScaleRanges()
+→ aktualna skala ocen
+```
+
+Eksporter nie utrzymuje równoległej mapy punktów, skali ani reguł profili.
+
+### 14.4. Budowa dokumentu
+
+```text
+aktualny content_json
+→ sekcja ucznia dla każdego profilu
+→ każdy kolejny profil od nowej strony
+→ jeden wspólny klucz na końcu
+→ A4
+→ Packer.toBlob()
+→ pobranie pliku
+```
+
+Karta pracy zawiera `intro`, `tip` i słowniczek tylko dla profilu Obcojęzycznego. Bloki kodu używają czcionki monospace i zachowują podziały wierszy oraz wcięcia.
+
+### 14.5. Relacja z bazą i Historią
+
+Eksport DOCX:
+
+- nie tworzy tabeli ani migracji,
+- nie zapisuje rekordu `material_exports`,
+- nie tworzy nowego `generated_materials`,
+- nie aktualizuje `access_count` ani `last_accessed_at`,
+- nie zmienia `content_json`,
+- nie wpływa na `generation_fingerprint`,
+- nie zapisuje pliku w Storage,
+- działa także po otwarciu istniejącego materiału z Historii.
+
+### 14.6. Regresja
+
+Automatyczny test obejmuje kartę pracy 7 zadań × 5 profili, jeden słowniczek, jeden klucz, sumę 17 pkt, skalę ocen, wielowierszowy kod oraz kartkówkę z `closed_tf` i sumą 9 pkt.
+
+Runtime w Microsoft Word potwierdził eksport kart pracy i kartkówek z Historii, nową stronę dla profili, jeden klucz, prawidłowe sumy 9 / 11 / 14 pkt oraz zachowanie operatorów i wcięć kodu. Testy Node, lint i build są czyste; pakiet został zatwierdzony w repozytorium.
+
+---
+
+## 15. ELEMENTY WYCOFANE I ZACHOWANE
 
 ### Coverage
 
@@ -897,11 +1309,11 @@ Funkcje semantic search, chunki i embeddingi pozostają w bazie.
 
 Nie są używane przez aktualny Route Handler dla jednego krótkiego DOCX, ale nie należy ich usuwać bez osobnej decyzji dotyczącej długich albo wielu dokumentów.
 
-## 14. CLEANUP BAZY — ZAKOŃCZONY
+## 16. CLEANUP BAZY — ZAKOŃCZONY
 
 Cleanup po stabilizacji Generatora wykonano w trzech oddzielnych migracjach.
 
-### 14.1. Usunięcie coverage cache
+### 16.1. Usunięcie coverage cache
 
 Migracja:
 
@@ -917,7 +1329,7 @@ public.private_rag_task_type_coverage_cache
 
 Operacja została wykonana bez `CASCADE`. Kontrola końcowa potwierdziła `coverage_table_exists = false`.
 
-### 14.2. Usunięcie zduplikowanych indeksów katalogu
+### 16.2. Usunięcie zduplikowanych indeksów katalogu
 
 Migracja:
 
@@ -941,7 +1353,7 @@ lesson_topics_catalog_section_active_order_idx
 
 Migracja przed usunięciem sprawdzała równoważność strukturalną i brak powiązania z constraintem.
 
-### 14.3. Cleanup przeciążenia RPC importu CSV
+### 16.3. Cleanup przeciążenia RPC importu CSV
 
 Migracja:
 
@@ -972,7 +1384,7 @@ authenticated    = true
 
 Ponowny import CSV po migracji potwierdził utworzenie katalogu przypisanego do wybranej klasy.
 
-### 14.4. Elementy świadomie pozostawione
+### 16.4. Elementy świadomie pozostawione
 
 Nie usunięto:
 
@@ -987,7 +1399,7 @@ Nie usunięto:
 
 Polityki RLS wymagają osobnego audytu pełnej macierzy ról i nie były częścią cleanupu przed startem sprzedaży.
 
-## 15. STORAGE
+## 17. STORAGE
 
 ### `teacher-documents`
 
@@ -997,11 +1409,11 @@ Prywatny bucket na źródłowe CSV i DOCX. Ścieżki muszą uwzględniać właś
 
 PDF i DOCX wygenerowanych materiałów nie są przechowywane w osobnej tabeli ani bucketcie.
 
-Pierwsza wersja generuje PDF na żądanie z `content_json`. Trwały cache eksportów zostanie zaprojektowany dopiero, gdy pojawi się realna potrzeba biznesowa.
+PDF jest tworzony przez aktualny renderer i mechanizm wydruku przeglądarki. DOCX jest budowany klientowo przez `lib/export/exportDocx.js` z `content_json` i aktualnej skali ocen. Trwały cache eksportów zostanie zaprojektowany dopiero, gdy pojawi się realna potrzeba biznesowa.
 
 ---
 
-## 16. ŚWIADOMIE ODŁOŻONE ELEMENTY
+## 18. ŚWIADOMIE ODŁOŻONE ELEMENTY
 
 Nie wdrażać w najbliższym pakiecie:
 
@@ -1022,7 +1434,7 @@ Każdy element wymaga osobnej potrzeby biznesowej i testu.
 
 ---
 
-## 17. KOLEJNOŚĆ DALSZEGO WDROŻENIA
+## 19. KOLEJNOŚĆ DALSZEGO WDROŻENIA
 
 Zakończone:
 
@@ -1040,19 +1452,35 @@ Zakończone:
 11. podłączenie Historii do generated_materials
 12. odczyt jednego content_json bez wywołania modelu
 13. ponowny wydruk / PDF z Historii
+14. jeden wspólny klucz nauczyciela
+15. punktacja siedmiu typów zadań
+16. indywidualna skala ocen nauczyciela
+17. aktualna skala także dla wcześniejszych materiałów z Historii
+```
+
+Zakończone dodatkowo:
+
+```text
+18. cleanup nieużywanych modułów starego projektu
+19. karta pracy dla wszystkich profili
+20. intro, tip i słowniczek w jednym wywołaniu modelu
+21. material_schema_v3 dla karty pracy
+22. open_explain bez context dla ucznia
+23. ponowny wydruk karty pracy z Historii
+24. końcowa regresja karty pracy 6 / 7 + HIT / no_sources
+25. regresja punktacji: 3 typy materiałów × 5 / 6 / 7
+26. audyt i eksport DOCX
 ```
 
 Następnie:
 
 ```text
-14. wspólny klucz nauczyciela
-15. karta pracy i domknięcie profili
-16. eksport DOCX
-17. sprawdzian
-18. WSO, limity i sprzedaż
+27. regresja kartkówki material_schema_v2
+28. sprawdzian
+29. limity, koszty i sprzedaż
 ```
 
-## 18. DECYZJE OBOWIĄZUJĄCE
+## 20. DECYZJE OBOWIĄZUJĄCE
 
 1. `lesson_topic_id` jest głównym kluczem operacyjnym tematu.
 2. Jeden krótki DOCX opisuje jeden temat.
@@ -1078,4 +1506,21 @@ Następnie:
 22. Otwarcie Historii jest tylko do odczytu i nie zmienia `access_count` ani `last_accessed_at`.
 23. Historia pokazuje `created_at` jako datę „Wygenerowano”, a sortuje według `last_accessed_at DESC`.
 24. Historia ponownie używa `GeneratedMaterial` i istniejącego wydruku / PDF.
-25. Następnym pakietem jest jeden wspólny klucz nauczyciela bez dodatkowego wywołania modelu.
+25. Jeden wspólny klucz nauczyciela jest budowany z istniejącego `content_json` bez dodatkowego wywołania modelu.
+26. Punkty wynikają z `taskSubtype` i `lib/generation/scoring.js`, a nie z decyzji modelu.
+27. Skala ocen jest osobnym ustawieniem w `teacher_grade_scales`, nie polem `teacher_profiles`.
+28. Jedna osoba ma jeden aktywny rekord skali identyfikowany przez `owner_id`.
+29. Skala nie jest zapisywana w `generated_materials` i nie wpływa na `generation_fingerprint` ani cache.
+30. Aktualna skala konta jest używana również przy wcześniejszych materiałach z Historii.
+31. Import skali ocen z CSV nie jest częścią aktualnego produktu.
+32. Karta pracy dla wszystkich profili jest aktywna i korzysta z `material_schema_v3`.
+33. `intro`, `tip`, `glossary` i `tasks` karty pracy powstają w jednym wywołaniu modelu.
+34. `open_explain` nie zawiera `context` pokazywanego uczniowi.
+35. Historia obsługuje wersje kontraktów per `material_type`, nie jeden globalny string.
+36. Zmiana CSS lub renderera zmienia ponownie wygenerowany PDF z Historii bez zmiany `content_json` i bez wywołania modelu.
+37. Końcowa regresja karty pracy i macierz punktacji 3 × 3 są zakończone.
+38. Eksport DOCX jest budowany na żądanie z istniejącego `content_json`, profili i aktualnej skali ocen.
+39. Eksport DOCX działa w Generatorze i Historii przez `GeneratedMaterial`; nie wywołuje modelu ani Route Handlera Generatora.
+40. DOCX nie jest przechowywany w Storage ani w osobnej tabeli i nie zmienia `access_count`, `last_accessed_at`, `content_json` ani `generation_fingerprint`.
+41. Eksporter używa istniejących źródeł prawdy: `getTaskProfilePresentation`, `getTaskPoints`, `buildTeacherAnswerKey` i `buildTeacherGradeScaleRanges`.
+42. Pakiet eksportu DOCX jest zakończony. Następnym krokiem jest regresja kartkówki `material_schema_v2`, ze szczególną kontrolą samowystarczalności `open_explain`.

@@ -17,6 +17,7 @@ function buildPrompt({
   materialType,
   shouldGenerateAdhdSupport = false,
   shouldGenerateGlossary = false,
+  sourceTopics,
 }) {
   return buildMaterialPrompt({
     topicTitle: "Pętla for",
@@ -26,6 +27,7 @@ function buildPrompt({
       taskCount: 5,
     }),
     sourceContext,
+    sourceTopics,
     shouldGenerateAdhdSupport,
     shouldGenerateGlossary,
   });
@@ -90,6 +92,55 @@ assert.doesNotMatch(
 assert.doesNotMatch(
   quizPrompt,
   /WSPARCIE MERYTORYCZNE ADHD/
+);
+assert.doesNotMatch(
+  quizPrompt,
+  /REGUŁY UŻYTYCH TYPÓW ZADAŃ/
+);
+assert.doesNotMatch(
+  quizPrompt,
+  /Dystraktory muszą być realistyczne/
+);
+
+const testSourceTopics = [
+  {
+    id: "00000000-0000-4000-8000-000000000001",
+    title: "Pierwszy temat",
+  },
+  {
+    id: "00000000-0000-4000-8000-000000000002",
+    title: "Drugi temat",
+  },
+];
+
+const testPrompt = buildPrompt({
+  materialType: "sprawdzian",
+  sourceTopics: testSourceTopics,
+});
+
+assert.match(
+  testPrompt,
+  /POKRYCIE TEMATÓW SPRAWDZIANU/
+);
+assert.match(
+  testPrompt,
+  /sourceTopicIds/
+);
+assert.match(
+  testPrompt,
+  /00000000-0000-4000-8000-000000000001 — Pierwszy temat/
+);
+assert.match(
+  testPrompt,
+  /każdy identyfikator tematu co najmniej raz/
+);
+
+assert.throws(
+  () =>
+    buildPrompt({
+      materialType: "sprawdzian",
+    }),
+  /listy tematów źródłowych/
 );
 
 console.log("TEST BUILD MATERIAL PROMPT: OK");

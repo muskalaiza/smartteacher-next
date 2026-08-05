@@ -95,7 +95,6 @@ const WORKSHEET_TASKS = [
     instruction: "Wyjaśnij, dlaczego nazwa zmiennej powinna być jednoznaczna.",
     expectedAnswer:
       "Jednoznaczna nazwa ułatwia rozpoznanie przeznaczenia zmiennej.",
-    answerExplanation: "Czytelna nazwa zmniejsza ryzyko pomyłki.",
     adhdSupport: ADHD_SUPPORT,
   },
   {
@@ -109,7 +108,6 @@ const WORKSHEET_TASKS = [
     ],
     expectedCode:
       "int liczba = 3;\nfor (int i = 0; i < 3; i++) {\n    cout << liczba;\n}",
-    answerExplanation: "Kod deklaruje zmienną i wyświetla ją trzy razy.",
     adhdSupport: ADHD_SUPPORT,
   },
   {
@@ -117,7 +115,6 @@ const WORKSHEET_TASKS = [
     taskSubtype: "open_explain",
     instruction: "Wyjaśnij, jaki wynik zwróci podany fragment programu.",
     expectedAnswer: "Program trzykrotnie wyświetli wartość zmiennej liczba.",
-    answerExplanation: "Pętla wykonuje instrukcję wyświetlania trzy razy.",
     adhdSupport: ADHD_SUPPORT,
   },
 ];

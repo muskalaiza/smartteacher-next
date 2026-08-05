@@ -388,7 +388,7 @@ function OpenCodeTask({ task }) {
       <div className="space-y-2">
         <SectionLabel>Wymagania</SectionLabel>
 
-        <ul className="space-y-2">
+        <ul className="print-code-requirements space-y-2">
           {task.requirements.map((requirement, index) => (
             <li
               key={`${task.number}-requirement-${index}-${requirement}`}

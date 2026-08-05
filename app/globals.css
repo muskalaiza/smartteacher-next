@@ -433,6 +433,30 @@
     background: #ffffff !important;
   }
 
+  /* =========================
+     SPRAWDZIAN — ZWARTY UKŁAD WYMAGAŃ KODU
+  ========================= */
+
+  .print-student-material[data-material-type="sprawdzian"]
+    .print-task {
+    padding: 1mm 0 !important;
+  }
+
+  .print-student-material[data-material-type="sprawdzian"]
+    .print-code-requirements {
+    margin-top: 0.5mm !important;
+  }
+
+  .print-student-material[data-material-type="sprawdzian"]
+    .print-code-requirements > li {
+    padding: 0 !important;
+  }
+
+  .print-student-material[data-material-type="sprawdzian"]
+    .print-code-requirements > li + li {
+    margin-top: 0.4mm !important;
+  }
+
     /* Dysleksja — kompaktowa typografia PDF */
 
   .print-student-material[data-profile="Dysleksja"]

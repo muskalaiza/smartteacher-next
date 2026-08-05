@@ -38,7 +38,7 @@ const MATERIAL_TYPES = [
     value: "sprawdzian",
     label: "Sprawdzian",
     description: "Zestaw zadań z wybranego działu.",
-    disabled: true,
+    disabled: false,
   },
 ];
 
@@ -137,6 +137,28 @@ const [generationError, setGenerationError] =
 const [generationOutput, setGenerationOutput] =
   useState(null);
 
+const [partialSources, setPartialSources] =
+  useState(null);
+
+const isTest =
+  selectedMaterialType === "sprawdzian";
+
+function handleMaterialTypeChange(event) {
+  const materialType =
+    event.target.value;
+
+  setSelectedMaterialType(
+    materialType
+  );
+  setGenerationError("");
+  setGenerationOutput(null);
+  setPartialSources(null);
+
+  if (materialType === "sprawdzian") {
+    setSelectedTaskCount("7");
+  }
+}
+
 function handleProfileChange(profileValue) {
   setSelectedProfiles((currentProfiles) => {
     if (currentProfiles.includes(profileValue)) {
@@ -152,13 +174,21 @@ function handleProfileChange(profileValue) {
   });
 }
 
-async function handleGenerate() {
+async function runGeneration({
+  acceptPartialSources,
+}) {
   setGenerationError("");
- setGenerationOutput(null);
+  setGenerationOutput(null);
 
-  if (!selectedLessonTopicId) {
+  if (
+    isTest
+      ? !selectedLessonSectionId
+      : !selectedLessonTopicId
+  ) {
     setGenerationError(
-      "Najpierw wybierz temat lekcji."
+      isTest
+        ? "Najpierw wybierz dział."
+        : "Najpierw wybierz temat lekcji."
     );
     return;
   }
@@ -199,14 +229,33 @@ if (
       await requestMaterialGeneration({
         supabase,
         lessonTopicId:
-          selectedLessonTopicId,
+          isTest
+            ? undefined
+            : selectedLessonTopicId,
+        lessonSectionId:
+          isTest
+            ? selectedLessonSectionId
+            : undefined,
         materialType:
           selectedMaterialType,
         taskCount:
           selectedTaskCount,
         profiles:
           selectedProfiles,
+        acceptPartialSources,
       });
+
+      if (
+        result.status ===
+          "partial_sources"
+      ) {
+        setPartialSources(
+          result
+        );
+        return;
+      }
+
+      setPartialSources(null);
     
       setGenerationOutput({
   result,
@@ -235,8 +284,30 @@ if (
   }
 }
 
+async function handleGenerate() {
+  await runGeneration({
+    acceptPartialSources: false,
+  });
+}
+
+async function handleConfirmPartialSources() {
+  setPartialSources(null);
+
+  await runGeneration({
+    acceptPartialSources: true,
+  });
+}
+
+function handleCancelPartialSources() {
+  setPartialSources(null);
+}
+
 const canGenerate =
-  Boolean(selectedLessonTopicId) &&
+  Boolean(
+    isTest
+      ? selectedLessonSectionId
+      : selectedLessonTopicId
+  ) &&
   isMaterialGenerationEnabled(selectedMaterialType) &&
   selectedProfiles.length > 0 &&
   !isGenerating;
@@ -403,9 +474,14 @@ const canGenerate =
 
                   <select
   id="lessonTopic"
-  value={selectedLessonTopicId}
+  value={
+    isTest
+      ? ""
+      : selectedLessonTopicId
+  }
   onChange={handleLessonTopicChange}
                     disabled={
+                      isTest ||
                       !selectedLessonSectionId ||
                       topicsLoading ||
                       lessonTopics.length === 0
@@ -413,7 +489,9 @@ const canGenerate =
                     className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-4 py-3 text-sm text-zinc-100 outline-none transition focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20 disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     <option value="" disabled>
-                      {!selectedLessonSectionId
+                      {isTest
+                        ? "Sprawdzian obejmie cały dział"
+                        : !selectedLessonSectionId
                         ? "Najpierw wybierz dział"
                         : topicsLoading
                           ? "Ładowanie tematów..."
@@ -431,7 +509,9 @@ const canGenerate =
                     <p className="text-xs text-red-300">{topicsError}</p>
                   ) : (
                     <p className="text-xs text-zinc-500">
-                      Tematy pochodzą z prywatnego katalogu lekcji nauczyciela.
+                      {isTest
+                        ? "Dla Sprawdzianu zakres tworzą wszystkie tematy działu posiadające gotowe materiały."
+                        : "Tematy pochodzą z prywatnego katalogu lekcji nauczyciela."}
                     </p>
                   )}
                 </div>
@@ -462,11 +542,7 @@ const canGenerate =
   checked={
     selectedMaterialType === type.value
   }
-  onChange={(event) =>
-    setSelectedMaterialType(
-      event.target.value
-    )
-  }
+  onChange={handleMaterialTypeChange}
   disabled={type.disabled}
   className="mt-1 h-4 w-4 accent-sky-500 disabled:cursor-not-allowed"
 />
@@ -574,6 +650,67 @@ const canGenerate =
     ? "Generowanie materiału..."
     : "Generuj zestaw materiałów"}
 </button>
+
+{partialSources ? (
+  <div
+    className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
+    role="presentation"
+  >
+    <section
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="partial-sources-title"
+      className="w-full max-w-lg rounded-2xl border border-zinc-700 bg-zinc-950 p-6 shadow-2xl"
+    >
+      <h2
+        id="partial-sources-title"
+        className="text-xl font-semibold text-zinc-50"
+      >
+        Nie wszystkie tematy mają gotowe materiały
+      </h2>
+
+      <p className="mt-3 text-sm leading-6 text-zinc-300">
+        W dziale „{partialSources.lessonSection.displayTitle}” gotowe
+        materiały są dostępne dla {partialSources.readyTopicCount} z {" "}
+        {partialSources.topicCount} tematów. Sprawdzian zostanie
+        wygenerowany wyłącznie na podstawie dostępnych materiałów.
+      </p>
+
+      <div className="mt-4 rounded-xl border border-zinc-800 bg-zinc-900/70 p-4">
+        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-zinc-400">
+          Tematy bez gotowego materiału
+        </p>
+
+        <ul className="mt-3 max-h-40 space-y-2 overflow-y-auto text-sm text-zinc-300">
+          {partialSources.missingTopics.map((topic) => (
+            <li key={topic.id} className="flex gap-2">
+              <span className="text-zinc-500">•</span>
+              <span>{topic.title}</span>
+            </li>
+          ))}
+        </ul>
+      </div>
+
+      <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+        <button
+          type="button"
+          onClick={handleCancelPartialSources}
+          className="rounded-xl border border-zinc-700 px-4 py-2.5 text-sm font-medium text-zinc-200 transition hover:bg-zinc-900"
+        >
+          Anuluj
+        </button>
+
+        <button
+          type="button"
+          onClick={handleConfirmPartialSources}
+          className="rounded-xl bg-sky-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-sky-500"
+        >
+          Generuj z dostępnych materiałów
+        </button>
+      </div>
+    </section>
+  </div>
+) : null}
 
 {generationError ? (
   <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-4">

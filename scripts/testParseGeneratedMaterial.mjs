@@ -86,19 +86,18 @@ function buildTask({ number, taskSubtype, withAdhdSupport }) {
     case "error_find":
       return {
         ...base,
-        instruction: "Znajdź i popraw błąd w zmianie licznika.",
+        expectedBehavior:
+          "Licznik pętli rośnie od 0 do 4.",
         codeWithError: "for (int i = 0; i < 5; i--) {\n  cout << i;\n}",
-        expectedCode: "for (int i = 0; i < 5; i++) {\n  cout << i;\n}",
-        answerExplanation: "Licznik musi rosnąć.",
+        errorFragment: "i--",
+        correctedFragment: "i++",
       };
 
     case "open_code":
       return {
         ...base,
-        instruction: "Napisz pętlę wypisującą liczby od 1 do 5.",
         requirements: ["Użyj pętli for.", "Wypisz pięć liczb."],
         expectedCode: "for (int i = 1; i <= 5; i++) {\n  cout << i;\n}",
-        answerExplanation: "Pętla wykonuje pięć iteracji.",
       };
 
     case "open_explain":
@@ -106,7 +105,6 @@ function buildTask({ number, taskSubtype, withAdhdSupport }) {
         ...base,
         instruction: "Wyjaśnij, dlaczego warunek pętli decyduje o liczbie iteracji.",
         expectedAnswer: "Warunek jest sprawdzany przed każdą iteracją i zatrzymuje pętlę, gdy staje się fałszywy.",
-        answerExplanation: "To warunek określa, ile razy blok instrukcji może zostać wykonany.",
       };
 
     default:
@@ -124,6 +122,7 @@ function parseMaterial({
   materialType,
   taskPlan,
   shouldGenerateGlossary,
+  sourceTopicIds,
   value,
 }) {
   return parseGeneratedMaterial(
@@ -132,8 +131,53 @@ function parseMaterial({
       materialType,
       taskPlan,
       shouldGenerateGlossary,
+      sourceTopicIds,
     }
   );
+}
+
+function buildLegacyTasks(taskPlan, withAdhdSupport) {
+  return buildTasks(taskPlan, withAdhdSupport).map((task) => {
+    switch (task.taskSubtype) {
+      case "error_find": {
+        const {
+          expectedBehavior,
+          errorFragment,
+          correctedFragment,
+          ...legacyTask
+        } = task;
+
+        void expectedBehavior;
+        void errorFragment;
+        void correctedFragment;
+
+        return {
+          ...legacyTask,
+          instruction: "Znajdź i popraw błąd w zmianie licznika.",
+          expectedCode:
+            "for (int i = 0; i < 5; i++) {\n  cout << i;\n}",
+          answerExplanation: "Licznik musi rosnąć.",
+        };
+      }
+
+      case "open_code":
+        return {
+          ...task,
+          instruction: "Napisz pętlę wypisującą liczby od 1 do 5.",
+          answerExplanation: "Pętla wykonuje pięć iteracji.",
+        };
+
+      case "open_explain":
+        return {
+          ...task,
+          answerExplanation:
+            "To warunek określa liczbę iteracji.",
+        };
+
+      default:
+        return task;
+    }
+  });
 }
 
 function testWorksheet() {
@@ -191,6 +235,18 @@ function testWorksheet() {
     ),
     false
   );
+  assert.equal(
+    parsed.tasks[3].expectedCode,
+    "for (int i = 0; i < 5; i++) {\n  cout << i;\n}"
+  );
+  assert.match(
+    parsed.tasks[3].instruction,
+    /Oczekiwane działanie: Licznik pętli rośnie od 0 do 4\./
+  );
+  assert.equal(
+    Object.hasOwn(parsed.tasks[4], "answerExplanation"),
+    false
+  );
 
   console.log("Parser karty pracy: OK");
 }
@@ -201,7 +257,7 @@ function testLegacyOpenExplainContextIsDiscarded() {
     taskCount: 5,
   });
 
-  const tasks = buildTasks(taskPlan, true);
+  const tasks = buildLegacyTasks(taskPlan, true);
   tasks[4].context =
     "Historyczny kontekst zapisany w material_schema_v2.";
 
@@ -250,7 +306,7 @@ function testQuizRegression() {
       intro: "",
       tip: [],
       glossary: [],
-      tasks: buildTasks(taskPlan, false),
+      tasks: buildLegacyTasks(taskPlan, false),
     },
   });
 
@@ -276,7 +332,7 @@ function testStoredTestRegression() {
       intro: "",
       tip: [],
       glossary: [],
-      tasks: buildTasks(taskPlan, false),
+      tasks: buildLegacyTasks(taskPlan, false),
     },
   });
 
@@ -288,6 +344,199 @@ function testStoredTestRegression() {
   console.log(
     "Regresja parsera sprawdzianu zapisanego w Historii: OK"
   );
+}
+
+function testDeterministicTaskNormalization() {
+  const taskPlan = buildTaskPlan({
+    materialType: "kartkówka",
+    taskCount: 7,
+  });
+  const tasks = buildTasks(taskPlan, false);
+
+  const parsed = parseMaterial({
+    materialType: "kartkówka",
+    taskPlan,
+    shouldGenerateGlossary: false,
+    value: {
+      intro: "",
+      tip: [],
+      glossary: [],
+      tasks,
+    },
+  });
+
+  const errorFindTask = parsed.tasks.find(
+    (task) => task.taskSubtype === "error_find"
+  );
+  const openCodeTask = parsed.tasks.find(
+    (task) => task.taskSubtype === "open_code"
+  );
+
+  assert.equal(
+    errorFindTask.expectedCode,
+    "for (int i = 0; i < 5; i++) {\n  cout << i;\n}"
+  );
+  assert.equal(
+    errorFindTask.answerExplanation,
+    "Błędny fragment: i--\nPoprawny fragment: i++"
+  );
+  assert.equal(
+    openCodeTask.instruction,
+    "Napisz kod spełniający poniższe wymagania."
+  );
+  assert.equal(
+    Object.hasOwn(openCodeTask, "answerExplanation"),
+    false
+  );
+
+  const invalidTasks = buildTasks(taskPlan, false);
+  const invalidErrorFindTask = invalidTasks.find(
+    (task) => task.taskSubtype === "error_find"
+  );
+  invalidErrorFindTask.errorFragment = "nieistniejący fragment";
+
+  assert.throws(
+    () =>
+      parseMaterial({
+        materialType: "kartkówka",
+        taskPlan,
+        shouldGenerateGlossary: false,
+        value: {
+          intro: "",
+          tip: [],
+          glossary: [],
+          tasks: invalidTasks,
+        },
+      }),
+    /musi występować w codeWithError dokładnie raz/
+  );
+
+  console.log("Deterministyczna normalizacja typów zadań: OK");
+}
+
+function testLessonSectionSourceCoverage() {
+  const sourceTopicIds = [
+    "00000000-0000-4000-8000-000000000001",
+    "00000000-0000-4000-8000-000000000002",
+    "00000000-0000-4000-8000-000000000003",
+  ];
+
+  const taskPlan = buildTaskPlan({
+    materialType: "sprawdzian",
+    taskCount: 5,
+  });
+
+  const tasks = buildTasks(
+    taskPlan,
+    false
+  ).map(
+    (task, index) => ({
+      ...task,
+      sourceTopicIds:
+        index === 0
+          ? [
+              sourceTopicIds[0],
+              sourceTopicIds[1],
+            ]
+          : index === 1
+            ? [
+                sourceTopicIds[2],
+              ]
+            : [
+                sourceTopicIds[
+                  index %
+                    sourceTopicIds.length
+                ],
+              ],
+    })
+  );
+
+  const parsed = parseMaterial({
+    materialType: "sprawdzian",
+    taskPlan,
+    shouldGenerateGlossary: false,
+    sourceTopicIds,
+    value: {
+      intro: "",
+      tip: [],
+      glossary: [],
+      tasks,
+    },
+  });
+
+  assert.deepEqual(
+    parsed.sourceTopicIds,
+    sourceTopicIds
+  );
+
+  assert.deepEqual(
+    parsed.tasks[0].sourceTopicIds,
+    sourceTopicIds.slice(0, 2)
+  );
+
+  assert.throws(
+    () =>
+      parseMaterial({
+        materialType: "sprawdzian",
+        taskPlan,
+        shouldGenerateGlossary: false,
+        sourceTopicIds,
+        value: {
+          intro: "",
+          tip: [],
+          glossary: [],
+          tasks: tasks.map(
+            (task) => ({
+              ...task,
+              sourceTopicIds:
+                task.sourceTopicIds.filter(
+                  (sourceTopicId) =>
+                    sourceTopicId !==
+                    sourceTopicIds[2]
+                ),
+            })
+          ).map(
+            (task) => ({
+              ...task,
+              sourceTopicIds:
+                task.sourceTopicIds.length > 0
+                  ? task.sourceTopicIds
+                  : [sourceTopicIds[0]],
+            })
+          ),
+        },
+      }),
+    /nie uwzględnił wszystkich tematów źródłowych/
+  );
+
+  assert.throws(
+    () =>
+      parseMaterial({
+        materialType: "sprawdzian",
+        taskPlan,
+        shouldGenerateGlossary: false,
+        sourceTopicIds,
+        value: {
+          intro: "",
+          tip: [],
+          glossary: [],
+          tasks: tasks.map(
+            (task, index) =>
+              index === 0
+                ? {
+                    ...task,
+                    sourceTopicIds: [
+                      "00000000-0000-4000-8000-000000000099",
+                    ],
+                  }
+                : task
+          ),
+        },
+      }),
+    /spoza zakresu sprawdzianu/
+  );
+
+  console.log("Pokrycie tematów źródłowych sprawdzianu: OK");
 }
 
 function testInvalidWorksheetFields() {
@@ -306,7 +555,7 @@ function testInvalidWorksheetFields() {
       },
     ],
     glossary: [],
-    tasks: buildTasks(taskPlan, false),
+      tasks: buildLegacyTasks(taskPlan, false),
   };
 
   assert.throws(
@@ -358,7 +607,9 @@ try {
   testWorksheet();
   testLegacyOpenExplainContextIsDiscarded();
   testQuizRegression();
+  testDeterministicTaskNormalization();
   testStoredTestRegression();
+  testLessonSectionSourceCoverage();
   testInvalidWorksheetFields();
   console.log("TEST PARSE GENERATED MATERIAL: OK");
 } catch (error) {

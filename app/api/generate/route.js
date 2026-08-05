@@ -24,6 +24,11 @@ import {
 } from "@/lib/generation/generateMaterialFromContext"
 
 import {
+  getLessonSectionSourceContext,
+  LessonSectionSourceNotFoundError,
+} from "@/lib/generation/getLessonSectionSourceContext"
+
+import {
   getLessonTopicSourceContext,
   LessonTopicSourceNotFoundError,
 } from "@/lib/generation/getLessonTopicSourceContext"
@@ -51,9 +56,11 @@ const ALLOWED_PROFILES = new Set([
 
 const ALLOWED_REQUEST_FIELDS = new Set([
   "lessonTopicId",
+  "lessonSectionId",
   "materialType",
   "taskCount",
   "profiles",
+  "acceptPartialSources",
 ])
 
 function validateProfiles(
@@ -85,41 +92,11 @@ function validateProfiles(
   )
 }
 
-async function getOwnedLessonTopic({
+async function getOwnedLessonCatalogContext({
   supabaseAdmin,
   ownerId,
-  lessonTopicId,
+  lessonCatalogId,
 }) {
-  const {
-    data: lessonTopic,
-    error: lessonTopicError,
-  } =
-    await supabaseAdmin
-      .from("lesson_topics")
-      .select(
-        [
-          "id",
-          "catalog_id",
-          "display_title",
-          "lesson_key",
-        ].join(", ")
-      )
-      .eq(
-        "id",
-        lessonTopicId
-      )
-      .maybeSingle()
-
-  if (lessonTopicError) {
-    throw new Error(
-      `Nie udało się pobrać tematu lekcji: ${lessonTopicError.message}`
-    )
-  }
-
-  if (!lessonTopic) {
-    return null
-  }
-
   const {
     data: lessonCatalog,
     error: lessonCatalogError,
@@ -136,7 +113,7 @@ async function getOwnedLessonTopic({
       )
       .eq(
         "id",
-        lessonTopic.catalog_id
+        lessonCatalogId
       )
       .eq(
         "owner_id",
@@ -189,14 +166,124 @@ async function getOwnedLessonTopic({
   }
 
   return {
-    lessonTopic,
     lessonCatalog,
     subject,
   }
 }
 
+async function getOwnedLessonTopic({
+  supabaseAdmin,
+  ownerId,
+  lessonTopicId,
+}) {
+  const {
+    data: lessonTopic,
+    error: lessonTopicError,
+  } =
+    await supabaseAdmin
+      .from("lesson_topics")
+      .select(
+        [
+          "id",
+          "catalog_id",
+          "display_title",
+          "lesson_key",
+        ].join(", ")
+      )
+      .eq(
+        "id",
+        lessonTopicId
+      )
+      .maybeSingle()
+
+  if (lessonTopicError) {
+    throw new Error(
+      `Nie udało się pobrać tematu lekcji: ${lessonTopicError.message}`
+    )
+  }
+
+  if (!lessonTopic) {
+    return null
+  }
+
+  const catalogContext =
+    await getOwnedLessonCatalogContext({
+      supabaseAdmin,
+      ownerId,
+      lessonCatalogId:
+        lessonTopic.catalog_id,
+    })
+
+  if (!catalogContext) {
+    return null
+  }
+
+  return {
+    lessonTopic,
+    ...catalogContext,
+  }
+}
+
+async function getOwnedLessonSection({
+  supabaseAdmin,
+  ownerId,
+  lessonSectionId,
+}) {
+  const {
+    data: lessonSection,
+    error: lessonSectionError,
+  } =
+    await supabaseAdmin
+      .from("lesson_sections")
+      .select(
+        [
+          "id",
+          "catalog_id",
+          "display_name",
+          "section_key",
+        ].join(", ")
+      )
+      .eq(
+        "id",
+        lessonSectionId
+      )
+      .eq(
+        "is_active",
+        true
+      )
+      .maybeSingle()
+
+  if (lessonSectionError) {
+    throw new Error(
+      `Nie udało się pobrać działu: ${lessonSectionError.message}`
+    )
+  }
+
+  if (!lessonSection) {
+    return null
+  }
+
+  const catalogContext =
+    await getOwnedLessonCatalogContext({
+      supabaseAdmin,
+      ownerId,
+      lessonCatalogId:
+        lessonSection.catalog_id,
+    })
+
+  if (!catalogContext) {
+    return null
+  }
+
+  return {
+    lessonSection,
+    ...catalogContext,
+  }
+}
+
 function buildGeneratedResponse({
   lessonTopic,
+  lessonSection,
   generationManifest,
   generationFingerprint,
   sourceResult,
@@ -206,22 +293,95 @@ function buildGeneratedResponse({
   generatedMaterialId,
   accessCount,
 }) {
+  const lessonScope =
+    lessonSection
+      ? {
+          lessonSection: {
+            id:
+              lessonSection.id,
+
+            displayTitle:
+              lessonSection
+                .display_name,
+
+            sectionKey:
+              lessonSection
+                .section_key,
+          },
+        }
+      : {
+          lessonTopic: {
+            id:
+              lessonTopic.id,
+
+            displayTitle:
+              lessonTopic
+                .display_title,
+
+            lessonKey:
+              lessonTopic
+                .lesson_key,
+          },
+        }
+
+  const source =
+    lessonSection
+      ? {
+          topicCount:
+            sourceResult
+              .topicCount,
+
+          readyTopicCount:
+            sourceResult
+              .readyTopicCount,
+
+          missingTopicCount:
+            sourceResult
+              .missingTopicCount,
+
+          documentCount:
+            sourceResult
+              .documentCount,
+
+          chunkCount:
+            sourceResult
+              .chunkCount,
+
+          sourceFingerprint:
+            sourceResult
+              .sourceFingerprint,
+
+          sourceManifestVersion:
+            sourceResult
+              .sourceManifestVersion,
+        }
+      : {
+          documentId:
+            sourceResult
+              .documentId,
+
+          fileName:
+            sourceResult
+              .sourceFilename,
+
+          chunkCount:
+            sourceResult
+              .chunkCount,
+
+          sourceFingerprint:
+            sourceResult
+              .sourceFingerprint,
+
+          sourceManifestVersion:
+            sourceResult
+              .sourceManifestVersion,
+        }
+
   return {
     success: true,
     status: "generated",
 
-    lessonTopic: {
-      id:
-        lessonTopic.id,
-
-      displayTitle:
-        lessonTopic
-          .display_title,
-
-      lessonKey:
-        lessonTopic
-          .lesson_key,
-    },
+    ...lessonScope,
 
     materialType:
       generationManifest
@@ -250,27 +410,7 @@ function buildGeneratedResponse({
       accessCount,
     },
 
-    source: {
-      documentId:
-        sourceResult
-          .documentId,
-
-      fileName:
-        sourceResult
-          .sourceFilename,
-
-      chunkCount:
-        sourceResult
-          .chunkCount,
-
-      sourceFingerprint:
-        sourceResult
-          .sourceFingerprint,
-
-      sourceManifestVersion:
-        sourceResult
-          .sourceManifestVersion,
-    },
+    source,
 
     generation: {
       generationFingerprint,
@@ -375,29 +515,7 @@ export async function POST(
     }
 
     /*
-      3. Walidacja tematu lekcji.
-    */
-    const lessonTopicId =
-      typeof requestBody
-        .lessonTopicId ===
-        "string"
-        ? requestBody
-            .lessonTopicId
-            .trim()
-        : ""
-
-    if (!isUuid(lessonTopicId)) {
-      return jsonResponse(
-        {
-          error:
-            "Brak poprawnego identyfikatora tematu lekcji.",
-        },
-        400
-      )
-    }
-
-    /*
-      4. Walidacja aktywnego typu materiału.
+      3. Walidacja aktywnego typu materiału.
     */
     const materialType =
       typeof requestBody
@@ -413,7 +531,7 @@ export async function POST(
       return jsonResponse(
         {
           error:
-            "Generator obsługuje obecnie kartę pracy i kartkówkę.",
+            "Generator nie obsługuje wybranego typu materiału.",
         },
         400
       )
@@ -421,6 +539,98 @@ export async function POST(
 
     const contentSchemaVersion =
       getMaterialContentSchemaVersion(materialType)
+
+    const isTest =
+      materialType ===
+        "sprawdzian"
+
+    /*
+      4. Walidacja zakresu:
+      temat dla karty pracy i kartkówki,
+      dział dla sprawdzianu.
+    */
+    const lessonTopicId =
+      typeof requestBody
+        .lessonTopicId ===
+        "string"
+        ? requestBody
+            .lessonTopicId
+            .trim()
+        : ""
+
+    const lessonSectionId =
+      typeof requestBody
+        .lessonSectionId ===
+        "string"
+        ? requestBody
+            .lessonSectionId
+            .trim()
+        : ""
+
+    if (
+      isTest
+        ? !isUuid(
+            lessonSectionId
+          ) ||
+          Boolean(
+            lessonTopicId
+          )
+        : !isUuid(
+            lessonTopicId
+          ) ||
+          Boolean(
+            lessonSectionId
+          )
+    ) {
+      return jsonResponse(
+        {
+          error:
+            isTest
+              ? "Sprawdzian wymaga poprawnego identyfikatora działu."
+              : "Wybrany materiał wymaga poprawnego identyfikatora tematu lekcji.",
+        },
+        400
+      )
+    }
+
+    const hasAcceptPartialSources =
+      Object.prototype.hasOwnProperty.call(
+        requestBody,
+        "acceptPartialSources"
+      )
+
+    if (
+      hasAcceptPartialSources &&
+      typeof requestBody
+        .acceptPartialSources !==
+        "boolean"
+    ) {
+      return jsonResponse(
+        {
+          error:
+            "acceptPartialSources musi być wartością logiczną.",
+        },
+        400
+      )
+    }
+
+    if (
+      !isTest &&
+      hasAcceptPartialSources
+    ) {
+      return jsonResponse(
+        {
+          error:
+            "Potwierdzenie częściowych źródeł może należeć wyłącznie do sprawdzianu.",
+        },
+        400
+      )
+    }
+
+    const acceptPartialSources =
+      requestBody
+        .acceptPartialSources ===
+        true
 
     /*
       5. Walidacja liczby zadań.
@@ -465,24 +675,35 @@ export async function POST(
     }
 
     /*
-      7. Kontrola prywatnego tematu,
+      7. Kontrola prywatnego zakresu,
       katalogu i przedmiotu.
     */
     const ownedContext =
-      await getOwnedLessonTopic({
-        supabaseAdmin,
+      isTest
+        ? await getOwnedLessonSection({
+            supabaseAdmin,
 
-        ownerId:
-          user.id,
+            ownerId:
+              user.id,
 
-        lessonTopicId,
-      })
+            lessonSectionId,
+          })
+        : await getOwnedLessonTopic({
+            supabaseAdmin,
+
+            ownerId:
+              user.id,
+
+            lessonTopicId,
+          })
 
     if (!ownedContext) {
       return jsonResponse(
         {
           error:
-            "Nie znaleziono prywatnego tematu lekcji.",
+            isTest
+              ? "Nie znaleziono prywatnego działu."
+              : "Nie znaleziono prywatnego tematu lekcji.",
         },
         404
       )
@@ -490,27 +711,84 @@ export async function POST(
 
     const {
       lessonTopic,
+      lessonSection,
       lessonCatalog,
       subject,
     } = ownedContext
 
     /*
-      8. Pełny, zweryfikowany dokument.
+      8. Pełne, zweryfikowane źródła.
     */
     const sourceResult =
-      await getLessonTopicSourceContext({
-        supabaseAdmin,
+      isTest
+        ? await getLessonSectionSourceContext({
+            supabaseAdmin,
 
-        ownerId:
-          user.id,
+            ownerId:
+              user.id,
 
-        subjectId:
-          lessonCatalog
-            .subject_id,
+            subjectId:
+              lessonCatalog
+                .subject_id,
 
-        lessonTopicId:
-          lessonTopic.id,
-      })
+            lessonCatalogId:
+              lessonCatalog.id,
+
+            lessonSectionId:
+              lessonSection.id,
+          })
+        : await getLessonTopicSourceContext({
+            supabaseAdmin,
+
+            ownerId:
+              user.id,
+
+            subjectId:
+              lessonCatalog
+                .subject_id,
+
+            lessonTopicId:
+              lessonTopic.id,
+          })
+
+    if (
+      isTest &&
+      sourceResult
+        .missingTopicCount > 0 &&
+      !acceptPartialSources
+    ) {
+      return jsonResponse(
+        {
+          status:
+            "partial_sources",
+
+          error:
+            "Nie wszystkie tematy wybranego działu mają gotowe materiały źródłowe.",
+
+          lessonSection: {
+            id:
+              lessonSection.id,
+
+            displayTitle:
+              lessonSection
+                .display_name,
+          },
+
+          topicCount:
+            sourceResult
+              .topicCount,
+
+          readyTopicCount:
+            sourceResult
+              .readyTopicCount,
+
+          missingTopics:
+            sourceResult
+              .missingTopics,
+        },
+        409
+      )
+    }
 
     /*
       9. Deterministyczny plan
@@ -536,11 +814,21 @@ export async function POST(
             .sourceFingerprint,
 
         lessonTopicId:
-          lessonTopic.id,
+          isTest
+            ? null
+            : lessonTopic.id,
+
+        lessonSectionId:
+          isTest
+            ? lessonSection.id
+            : null,
 
         topicTitle:
-          lessonTopic
-            .display_title,
+          isTest
+            ? lessonSection
+                .display_name
+            : lessonTopic
+                .display_title,
 
         materialType,
         taskCount,
@@ -573,12 +861,16 @@ export async function POST(
               .subject_id,
 
           lessonTopicId:
-            generationManifest
-              .lessonTopicId,
+            isTest
+              ? null
+              : generationManifest
+                  .lessonTopicId,
 
           sourceDocumentId:
-            sourceResult
-              .documentId,
+            isTest
+              ? null
+              : sourceResult
+                  .documentId,
 
           subjectNameSnapshot:
             subject
@@ -589,8 +881,11 @@ export async function POST(
               .topicTitle,
 
           sourceFileNameSnapshot:
-            sourceResult
-              .sourceFilename,
+            isTest
+              ? sourceResult
+                  .sourceFileNameSnapshot
+              : sourceResult
+                  .sourceFilename,
 
           materialType:
             generationManifest
@@ -643,6 +938,7 @@ export async function POST(
       return jsonResponse(
         buildGeneratedResponse({
           lessonTopic,
+          lessonSection,
           generationManifest,
           generationFingerprint,
           sourceResult,
@@ -728,6 +1024,12 @@ export async function POST(
             sourceResult
               .sourceContext,
 
+          sourceTopics:
+            isTest
+              ? sourceResult
+                  .sourceTopics
+              : undefined,
+
           model:
             generationManifest
               .model,
@@ -760,6 +1062,7 @@ export async function POST(
       return jsonResponse(
         buildGeneratedResponse({
           lessonTopic,
+          lessonSection,
           generationManifest,
           generationFingerprint,
           sourceResult,
@@ -832,6 +1135,22 @@ export async function POST(
 
           error:
             "Brak opracowanego materiału dla wybranego tematu lekcji.",
+        },
+        422
+      )
+    }
+
+    if (
+      error instanceof
+        LessonSectionSourceNotFoundError
+    ) {
+      return jsonResponse(
+        {
+          status:
+            "no_sources",
+
+          error:
+            "Brak opracowanych materiałów dla wybranego działu.",
         },
         422
       )

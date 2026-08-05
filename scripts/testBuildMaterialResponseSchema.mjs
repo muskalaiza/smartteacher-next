@@ -16,6 +16,7 @@ function assertTaskSchemas({
   schema,
   taskPlan,
   shouldGenerateAdhdSupport,
+  sourceTopicIds = null,
 }) {
   const taskItems = schema.properties.tasks.items;
 
@@ -58,6 +59,40 @@ function assertTaskSchemas({
       assert.deepEqual(
         taskSchema.properties.adhdSupport,
         { type: "null" }
+      );
+    }
+
+    if (sourceTopicIds) {
+      assert.deepEqual(
+        taskSchema.properties.sourceTopicIds.items.enum,
+        sourceTopicIds
+      );
+      assert.equal(
+        taskSchema.properties.sourceTopicIds.minItems,
+        1
+      );
+      assert.equal(
+        taskSchema.properties.sourceTopicIds.maxItems,
+        sourceTopicIds.length
+      );
+      assert.equal(
+        Object.prototype.hasOwnProperty.call(
+          taskSchema.properties.sourceTopicIds,
+          "uniqueItems"
+        ),
+        false
+      );
+      assert.equal(
+        taskSchema.required.includes("sourceTopicIds"),
+        true
+      );
+    } else {
+      assert.equal(
+        Object.prototype.hasOwnProperty.call(
+          taskSchema.properties,
+          "sourceTopicIds"
+        ),
+        false
       );
     }
   });
@@ -161,6 +196,62 @@ function testWorksheetSchema() {
   console.log("Schemat karty pracy + ADHD + słowniczek: OK");
 }
 
+function testLessonSectionTestSchema() {
+  const sourceTopicIds = [
+    "00000000-0000-4000-8000-000000000001",
+    "00000000-0000-4000-8000-000000000002",
+    "00000000-0000-4000-8000-000000000003",
+  ];
+
+  const taskPlan = buildTaskPlan({
+    materialType: "sprawdzian",
+    taskCount: 5,
+  });
+
+  const schema = buildMaterialResponseSchema({
+    materialType: "sprawdzian",
+    taskPlan,
+    shouldGenerateGlossary: false,
+    shouldGenerateAdhdSupport: false,
+    sourceTopicIds,
+  });
+
+  assertTaskSchemas({
+    schema,
+    taskPlan,
+    shouldGenerateAdhdSupport: false,
+    sourceTopicIds,
+  });
+
+  assert.throws(
+    () =>
+      buildMaterialResponseSchema({
+        materialType: "sprawdzian",
+        taskPlan,
+        shouldGenerateGlossary: false,
+        shouldGenerateAdhdSupport: false,
+      }),
+    /identyfikatorów tematów źródłowych/
+  );
+
+  assert.throws(
+    () =>
+      buildMaterialResponseSchema({
+        materialType: "kartkówka",
+        taskPlan: buildTaskPlan({
+          materialType: "kartkówka",
+          taskCount: 5,
+        }),
+        shouldGenerateGlossary: false,
+        shouldGenerateAdhdSupport: false,
+        sourceTopicIds,
+      }),
+    /wyłącznie do sprawdzianu/
+  );
+
+  console.log("Schemat sprawdzianu z sourceTopicIds: OK");
+}
+
 function testInvalidGlossaryContract() {
   const taskPlan = buildTaskPlan({
     materialType: "kartkówka",
@@ -179,12 +270,61 @@ function testInvalidGlossaryContract() {
   );
 }
 
+function testLeanTaskContracts() {
+  const errorFindProperties =
+    taskTypeSchemas.error_find.schema.properties;
+
+  assert.deepEqual(
+    Object.keys(errorFindProperties),
+    [
+      "number",
+      "taskSubtype",
+      "expectedBehavior",
+      "codeWithError",
+      "errorFragment",
+      "correctedFragment",
+      "adhdSupport",
+    ]
+  );
+
+  const openCodeProperties =
+    taskTypeSchemas.open_code.schema.properties;
+
+  assert.equal(
+    Object.hasOwn(openCodeProperties, "instruction"),
+    false
+  );
+  assert.equal(
+    Object.hasOwn(openCodeProperties, "answerExplanation"),
+    false
+  );
+
+  const openExplainProperties =
+    taskTypeSchemas.open_explain.schema.properties;
+
+  assert.equal(
+    Object.hasOwn(openExplainProperties, "answerExplanation"),
+    false
+  );
+
+  Object.values(taskTypeSchemas).forEach((taskTypeSchema) => {
+    assert.equal(
+      Object.hasOwn(taskTypeSchema, "rules"),
+      false
+    );
+  });
+
+  console.log("Odchudzone kontrakty typów zadań: OK");
+}
+
 function main() {
   const schemasBefore = JSON.stringify(taskTypeSchemas);
 
   testQuizSchemas();
   testWorksheetSchema();
+  testLessonSectionTestSchema();
   testInvalidGlossaryContract();
+  testLeanTaskContracts();
 
   assert.equal(
     JSON.stringify(taskTypeSchemas),

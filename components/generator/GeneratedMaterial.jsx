@@ -21,7 +21,9 @@ export default function GeneratedMaterial({ generationOutput }) {
   const tasks = material?.tasks;
   const profiles = generationOutput?.profiles;
   const materialTypeLabel = generationOutput?.materialType?.label;
-  const topicTitle = generationResult?.lessonTopic?.displayTitle;
+  const topicTitle =
+    generationResult?.lessonSection?.displayTitle ||
+    generationResult?.lessonTopic?.displayTitle;
   const materialTypeValue = generationOutput?.materialType?.value;
 
   useEffect(() => {

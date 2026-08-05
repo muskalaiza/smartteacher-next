@@ -200,12 +200,14 @@ export default function TeacherAnswerKey({
               <div className="mt-3 space-y-3 print:mt-2 print:space-y-2">
                 <AnswerValue answer={task.answer} />
 
-                <p className="text-sm leading-6 text-zinc-200 print:text-[9pt] print:leading-tight print:text-black">
-                  <span className="font-semibold text-zinc-100 print:text-black">
-                    {task.answer.explanationLabel}:
-                  </span>{" "}
-                  {task.explanation}
-                </p>
+                {task.explanation ? (
+                  <p className="text-sm leading-6 text-zinc-200 print:text-[9pt] print:leading-tight print:text-black">
+                    <span className="font-semibold text-zinc-100 print:text-black">
+                      {task.answer.explanationLabel}:
+                    </span>{" "}
+                    {task.explanation}
+                  </p>
+                ) : null}
 
                 <div>
                   <KeyLabel>Punktacja:</KeyLabel>

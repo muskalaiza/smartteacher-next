@@ -73,9 +73,19 @@ function buildHistoryGenerationOutput(record) {
 
   return {
     result: {
-      lessonTopic: {
-        displayTitle: record.topic_title_snapshot,
-      },
+      ...(record.material_type === "sprawdzian"
+        ? {
+            lessonSection: {
+              displayTitle:
+                record.topic_title_snapshot,
+            },
+          }
+        : {
+            lessonTopic: {
+              displayTitle:
+                record.topic_title_snapshot,
+            },
+          }),
       material: record.content_json,
     },
     materialType: {

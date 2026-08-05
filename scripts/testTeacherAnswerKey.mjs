@@ -49,13 +49,11 @@ const TASKS = [
     number: 6,
     taskSubtype: "open_code",
     expectedCode: "print('ok')",
-    answerExplanation: "Kod spełnia wymaganie.",
   },
   {
     number: 7,
     taskSubtype: "open_explain",
     expectedAnswer: "Pętla wykonuje pięć iteracji.",
-    answerExplanation: "Zakres zawiera pięć wartości.",
   },
 ];
 
@@ -63,7 +61,11 @@ const answerKey = buildTeacherAnswerKey(TASKS);
 
 assert.equal(
   answerKey.version,
-  TEACHER_ANSWER_KEY_VERSION
+  "teacher_answer_key_v2"
+);
+assert.equal(
+  TEACHER_ANSWER_KEY_VERSION,
+  "teacher_answer_key_v2"
 );
 assert.equal(answerKey.tasks.length, 7);
 assert.equal(answerKey.totalPoints, 15);
@@ -78,6 +80,20 @@ assert.equal(
 assert.equal(
   answerKey.tasks[4].answer.kind,
   "code"
+);
+assert.equal(answerKey.tasks[5].explanation, null);
+assert.equal(answerKey.tasks[6].explanation, null);
+
+const legacyOpenTaskKey = buildTeacherAnswerKey([
+  {
+    ...TASKS[5],
+    answerExplanation: "Historyczne wyjaśnienie.",
+  },
+]);
+
+assert.equal(
+  legacyOpenTaskKey.tasks[0].explanation,
+  "Historyczne wyjaśnienie."
 );
 
 const EXPECTED_TOTAL_POINTS = [

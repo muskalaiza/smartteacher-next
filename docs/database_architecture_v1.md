@@ -1,17 +1,17 @@
 # SmartTeacher — database_architecture_v1.md
 
-**Wersja dokumentu:** 2.8  
-**Data aktualizacji:** 05.08.2026  
+**Wersja dokumentu:** 2.9  
+**Data aktualizacji:** 09.08.2026  
 **Projekt:** `smartteacher-next`  
 **Supabase:** `smartteacher-next-dev`  
-**Status:** aktualna architektura robocza; Generator karty pracy, kartkówki i sprawdzianu, atomowy cache, Historia, wspólny klucz, punktacja, indywidualna skala ocen i eksport DOCX są wdrożone  
+**Status:** aktualna architektura robocza; Generator karty pracy, kartkówki i sprawdzianu, atomowy cache, Historia, wspólny klucz, punktacja, indywidualna skala ocen, eksport DOCX oraz serwerowa telemetria wywołań OpenAI są wdrożone  
 **Uwaga:** nazwa pliku pozostaje bez zmiany ze względu na ciągłość źródeł projektu.
 
 ---
 
 ## 0. CEL DOKUMENTU
 
-Dokument opisuje aktualny model danych SmartTeacher oraz decyzje obowiązujące przy dalszym rozwoju Generatora karty pracy, kartkówki i sprawdzianu, cache, Historii, wspólnego klucza nauczyciela, punktacji, indywidualnej skali ocen i eksportu DOCX.
+Dokument opisuje aktualny model danych SmartTeacher oraz decyzje obowiązujące przy dalszym rozwoju Generatora karty pracy, kartkówki i sprawdzianu, cache, Historii, wspólnego klucza nauczyciela, punktacji, indywidualnej skali ocen, eksportu DOCX i monitoringu użycia OpenAI.
 
 Nie jest jedną migracją SQL. Rzeczywiste migracje znajdują się w:
 
@@ -56,6 +56,8 @@ Frontend może odczytywać własne dane zgodnie z polityką. Operacje wymagając
 - aktualna funkcja importu CSV nie jest wykonywalna przez `PUBLIC` ani `anon`,
 - `authenticated` ma `SELECT`, `INSERT` i `UPDATE` wyłącznie do własnego rekordu w `teacher_grade_scales`,
 - `anon` nie ma grantu do `teacher_grade_scales`,
+- `ai_usage_events` jest tabelą wyłącznie serwerową: `PUBLIC`, `anon` i `authenticated` nie mają grantów ani polityk,
+- `service_role` ma wyłącznie `SELECT` i `INSERT` do `ai_usage_events`,
 - nie nadajemy dodatkowych praw zapisu, jeśli nie są potrzebne.
 
 ### 1.3. Jedna odpowiedzialność
@@ -87,6 +89,8 @@ DOCX
 
 CSV jest źródłem importu. Źródłem prawdy dla Generatora jest katalog relacyjny i przypisany dokument.
 
+Historyczne `LearningUnits` starego MVP nie jest tabelą, bazą wiedzy ani źródłem runtime `smartteacher-next`. Może służyć wyłącznie jako materiał referencyjny do przygotowania kontrolowanych DOCX testowych i porównań regresyjnych. Starego Generatora, retrieval, coverage, `topicMapping`, UI ani API nie przenosimy do aktualnego modelu danych.
+
 ---
 
 ## 2. GŁÓWNA OŚ DANYCH
@@ -109,10 +113,18 @@ lesson_topics
 → document_chunks
 → source_fingerprint
 
+brakujące document_embeddings
+→ rzeczywiste wywołanie OpenAI
+→ ai_usage_events.operation = document_embedding
+
 lesson_topics + teacher_documents + parametry Generatora
 → generation_fingerprint
 → claim_generated_material
 → generated_materials
+
+cache MISS Generatora
+→ rzeczywiste wywołanie OpenAI
+→ ai_usage_events.operation = material_generation
 
 lesson_sections + lesson_topics + gotowe teacher_documents
 → lesson_section_sources_v1
@@ -310,6 +322,8 @@ Mogą zostać wykorzystane później dla:
 - długich źródeł,
 - globalnej bazy SmartTeacher,
 - retrieval potwierdzonego pomiarem jakości.
+
+Generowanie brakujących embeddingów tworzy jedno zdarzenie `document_embedding` w `ai_usage_events` dla jednego logicznego żądania OpenAI. Pełne ponowne użycie istniejących, poprawnych wektorów nie wywołuje OpenAI i nie tworzy zdarzenia.
 
 ---
 
@@ -578,6 +592,17 @@ updated_at
 Cache HIT zwiększa `access_count` i aktualizuje `last_accessed_at`.
 
 Otwarcie materiału z Historii jest operacją tylko do odczytu i nie zmienia tych pól.
+
+Pola tokenów w `generated_materials` opisują wynik konkretnego materiału i pozostają częścią kontraktu cache. Nie zastępują osobnego rejestru `ai_usage_events`, który zapisuje rzeczywiste logiczne wywołania OpenAI, w tym próby zakończone błędem po stronie dostawcy albo parsera.
+
+```text
+cache MISS + wywołanie OpenAI
+→ jedno ai_usage_events
+
+cache HIT
+→ access_count + 1
+→ brak nowego ai_usage_events
+```
 
 Znaczenie dat:
 
@@ -997,7 +1022,7 @@ HIT → access_count = 2 i usage 0 / 0 / 0
 
 Końcowy rekord Sprawdzianu korzysta z `material_schema_v6`. Historia otwiera go z nazwą działu jako zakresem i bez wywołania modelu.
 
-Osobną tabelę zdarzeń można dodać później wyłącznie po pojawieniu się realnej potrzeby audytu każdego kliknięcia, retry albo rozliczeń per request.
+Od 09.08.2026 rzeczywiste wywołania OpenAI są dodatkowo rejestrowane w `ai_usage_events`. Historia nadal korzysta z `generated_materials`; nowa tabela nie jest źródłem treści materiałów ani listy Historii.
 
 ---
 
@@ -1590,7 +1615,245 @@ Nie usunięto:
 
 Polityki RLS wymagają osobnego audytu pełnej macierzy ról i nie były częścią cleanupu przed startem sprzedaży.
 
-## 18. STORAGE
+## 18. `ai_usage_events` — TELEMETRIA OPENAI WDROŻONA
+
+### 18.1. Odpowiedzialność
+
+Tabela jest append-only rejestrem rzeczywistych logicznych wywołań OpenAI dla:
+
+```text
+material_generation
+document_embedding
+```
+
+Nie przechowuje:
+
+- treści promptu ani odpowiedzi modelu,
+- cenników,
+- wyliczonego kosztu pieniężnego,
+- kosztów Supabase, Vercel, Storage, transferu ani płatności,
+- zdarzeń cache HIT,
+- danych uzupełnionych wstecz dla historycznych generowań.
+
+Migracja:
+
+```text
+supabase/sql/2026-08-06_ai_usage_events.sql
+```
+
+### 18.2. Kolumny
+
+| Kolumna | Typ | Odpowiedzialność |
+|---|---|---|
+| `id` | `uuid` | klucz główny, domyślnie `gen_random_uuid()` |
+| `owner_id` | `uuid` | właściciel wywołania, `auth.users(id) ON DELETE CASCADE` |
+| `generated_material_id` | `uuid NULL` | relacja operacji Generatora, `ON DELETE SET NULL` |
+| `source_document_id` | `uuid NULL` | relacja operacji embeddingów, `ON DELETE SET NULL` |
+| `operation` | `text` | `material_generation` albo `document_embedding` |
+| `model` | `text` | rzeczywisty model dostawcy |
+| `status` | `text` | `succeeded` albo `failed` |
+| `usage_known` | `boolean` | kompletność i spójność usage wymaganego dla operacji |
+| `input_tokens` | `integer NULL` | tokeny wejściowe |
+| `cached_input_tokens` | `integer NULL` | tokeny wejściowe z cache promptu OpenAI; dotyczy Generatora |
+| `output_tokens` | `integer NULL` | tokeny wyjściowe; dotyczy Generatora |
+| `total_tokens` | `integer NULL` | łączna liczba tokenów zwrócona przez dostawcę |
+| `created_at` | `timestamptz` | czas zapisu zdarzenia, domyślnie `now()` |
+
+`cached_input_tokens` nie opisuje cache `generated_materials`. Jest to informacja o cache promptu po stronie OpenAI.
+
+### 18.3. Relacje i constraints
+
+Przy zapisie obowiązuje dokładnie jedna relacja operacyjna:
+
+```text
+material_generation
+→ generated_material_id istnieje
+→ source_document_id = NULL
+
+document_embedding
+→ source_document_id istnieje
+→ generated_material_id = NULL
+```
+
+Usunięcie materiału lub dokumentu ustawia relację na `NULL`, ale zachowuje historyczne zdarzenie. Usunięcie użytkownika usuwa jego zdarzenia przez `ON DELETE CASCADE`.
+
+Tokeny muszą być nieujemnymi liczbami całkowitymi. Jeżeli `cached_input_tokens` istnieje, nie może przekraczać `input_tokens`.
+
+Gdy `usage_known = true`:
+
+```text
+material_generation
+→ input_tokens istnieje
+→ output_tokens istnieje
+→ total_tokens = input_tokens + output_tokens
+
+document_embedding
+→ input_tokens istnieje
+→ total_tokens = input_tokens
+→ cached_input_tokens = NULL
+→ output_tokens = NULL
+```
+
+Gdy dostawca nie zwróci kompletnego usage:
+
+```text
+usage_known = false
+→ brakujące wartości pozostają NULL
+→ nie zapisujemy fikcyjnych zer
+```
+
+### 18.4. Indeksy
+
+```text
+ai_usage_events_pkey
+→ id
+
+ai_usage_events_created_at_idx
+→ created_at DESC
+
+ai_usage_events_owner_created_at_idx
+→ owner_id, created_at DESC
+
+ai_usage_events_generated_material_idx
+→ generated_material_id
+→ WHERE generated_material_id IS NOT NULL
+
+ai_usage_events_source_document_idx
+→ source_document_id
+→ WHERE source_document_id IS NOT NULL
+```
+
+### 18.5. RLS i granty
+
+Tabela ma:
+
+```text
+RLS enabled = true
+RLS forced = false
+brak polityk frontendowych
+```
+
+Granty:
+
+```text
+PUBLIC        → brak
+anon          → brak
+authenticated → brak
+service_role  → SELECT, INSERT
+```
+
+Frontend nie odczytuje i nie zapisuje telemetrii. Aktywny kod nie ma uprawnień `UPDATE` ani `DELETE`, dlatego rejestr jest append-only.
+
+### 18.6. Warstwa aplikacji
+
+```text
+lib/aiUsage/notifyAiUsageEvent.js
+→ bezpieczne powiadomienie listenera
+
+lib/aiUsage/recordAiUsageEvent.js
+→ walidacja i mapowanie kontraktu
+→ INSERT do ai_usage_events
+→ recordAiUsageEventSafely() nie propaguje błędu zapisu
+
+app/api/generate/route.js
+→ owner_id z uwierzytelnionego użytkownika
+→ generated_material_id z atomowego claimu cache
+→ operacja material_generation wyłącznie po MISS
+
+app/api/private-rag/extract/route.js
+→ owner_id z uwierzytelnionego użytkownika
+→ source_document_id z przetwarzanego dokumentu
+→ operacja document_embedding wyłącznie przy wywołaniu OpenAI
+```
+
+Instrumentowane funkcje dostawcy:
+
+```text
+generateMaterialFromContext.js
+createEmbeddingVectors.js
+```
+
+Jedna podjęta próba wywołania tworzy najwyżej jedno zdarzenie:
+
+```text
+poprawna odpowiedź i dalsza walidacja
+→ succeeded
+
+błąd dostawcy
+albo nieprawidłowa odpowiedź
+albo błąd parsera po odpowiedzi
+→ failed
+→ zachowanie dostępnego usage
+
+błąd walidacji przed wywołaniem OpenAI
+→ brak zdarzenia
+```
+
+Zapis telemetrii działa w trybie best effort. Błąd `INSERT` jest widoczny w logach serwera, ale nie może zmienić wyniku poprawnego generowania materiału ani embeddingów.
+
+### 18.7. Relacja z cache i Historią
+
+```text
+cache MISS
+→ jedno wywołanie OpenAI
+→ jedno ai_usage_events
+
+cache HIT
+→ access_count + 1 w generated_materials
+→ 0 nowych tokenów
+→ brak nowego ai_usage_events
+
+otwarcie z Historii
+→ tylko content_json
+→ brak wywołania OpenAI
+→ brak nowego ai_usage_events
+```
+
+`generated_materials` pozostaje źródłem cache i Historii oraz zachowuje usage gotowego materiału. `ai_usage_events` jest odrębnym rejestrem prób wywołania dostawcy, również tych zakończonych błędem.
+
+### 18.8. Testy i dane live
+
+Testy kontraktowe:
+
+```text
+scripts/testAiUsageEvents.mjs
+scripts/testOpenAiUsageInstrumentation.mjs
+```
+
+Smoke test Generatora z 09.08.2026:
+
+```text
+operation = material_generation
+status = succeeded
+model = gpt-4o-mini
+usage_known = true
+input_tokens = 3247
+cached_input_tokens = 0
+output_tokens = 666
+total_tokens = 3913
+source_document_id = NULL
+dokładnie jedno zdarzenie dla cache MISS
+```
+
+Smoke test embeddingów z 09.08.2026:
+
+```text
+operation = document_embedding
+status = succeeded
+model = text-embedding-3-small
+usage_known = true
+input_tokens = 1757
+cached_input_tokens = NULL
+output_tokens = NULL
+total_tokens = 1757
+generated_material_id = NULL
+6 nowych embeddingów, 0 użytych ponownie
+dokładnie jedno zdarzenie
+```
+
+Migracja, live schema, constraints, indeksy, RLS, granty, instrumentacja, lint i build zostały potwierdzone. Pakiet został zatwierdzony w repozytorium.
+
+## 19. STORAGE
 
 ### `teacher-documents`
 
@@ -1604,14 +1867,14 @@ PDF jest tworzony przez aktualny renderer i mechanizm wydruku przeglądarki. DOC
 
 ---
 
-## 19. ŚWIADOMIE ODŁOŻONE ELEMENTY
+## 20. ŚWIADOMIE ODŁOŻONE ELEMENTY
 
 Nie wdrażać w najbliższym pakiecie:
 
 - `generation_requests`,
 - `generation_request_sources`,
 - `generated_material_outputs`,
-- `generation_usage_logs`,
+- drugi rejestr usage równoległy do `ai_usage_events`,
 - `material_exports`,
 - `knowledge_units`,
 - wiele dokumentów dla jednego tematu,
@@ -1625,7 +1888,7 @@ Każdy element wymaga osobnej potrzeby biznesowej i testu.
 
 ---
 
-## 20. KOLEJNOŚĆ DALSZEGO WDROŻENIA
+## 21. KOLEJNOŚĆ DALSZEGO WDROŻENIA
 
 Zakończone:
 
@@ -1666,18 +1929,22 @@ Zakończone dodatkowo:
 29. lesson_section_sources_v1 i pokrycie sourceTopicIds
 30. częściowe źródła z jawnym potwierdzeniem nauczyciela
 31. Historia, PDF i DOCX Sprawdzianu
+32. audyt rzeczywistych wywołań OpenAI i kontraktu usage
+33. migracja ai_usage_events
+34. instrumentacja Generatora i embeddingów
+35. testy kontraktowe oraz smoke testy telemetrii
 ```
 
 Następnie:
 
 ```text
-32. panel i monitoring kosztów produktu
-33. limity i subskrypcje
-34. własne SMTP i testy procesów konta
-35. testy z nauczycielami przed płatnym pilotażem
+36. audyt i zatwierdzenie kontraktu kolejnego pakietu kosztowego
+37. limity i subskrypcje
+38. własne SMTP i testy procesów konta
+39. testy z nauczycielami przed płatnym pilotażem
 ```
 
-## 21. DECYZJE OBOWIĄZUJĄCE
+## 22. DECYZJE OBOWIĄZUJĄCE
 
 1. `lesson_topic_id` jest głównym kluczem operacyjnym karty pracy i kartkówki; `lesson_section_id` wyznacza zakres Sprawdzianu.
 2. Jeden krótki DOCX opisuje jeden temat.
@@ -1732,4 +1999,17 @@ Następnie:
 51. Każde zadanie Sprawdzianu ma `sourceTopicIds`, a parser wymaga pokrycia wszystkich dostępnych tematów.
 52. Sprawdzian zapisuje `lesson_topic_id = NULL` i `source_document_id = NULL`; nie dodano kolumny `lesson_section_id` do `generated_materials`.
 53. `service_role` ma wyłącznie wymagany odczyt `public.lesson_sections`; granty `anon`, `authenticated` i polityki RLS nie zostały rozszerzone.
-54. Pakiet Sprawdzianu jest zakończony. Następnym zaplanowanym obszarem jest panel i monitoring kosztów produktu.
+54. Pakiet Sprawdzianu jest zakończony.
+55. Stare MVP pozostaje wzorcem referencyjnym; `LearningUnits` nie jest źródłem danych ani mechanizmem runtime `smartteacher-next`.
+56. `ai_usage_events` jest jedynym serwerowym rejestrem rzeczywistych logicznych wywołań OpenAI.
+57. Rejestr obsługuje operacje `material_generation` i `document_embedding` oraz statusy `succeeded` i `failed`.
+58. Cache MISS Generatora tworzy jedno zdarzenie, a cache HIT nie tworzy zdarzenia i nadal aktualizuje wyłącznie `generated_materials.access_count` oraz `last_accessed_at`.
+59. Generowanie brakujących embeddingów tworzy jedno zdarzenie na jedno żądanie OpenAI; pełne ponowne użycie wektorów nie tworzy zdarzenia.
+60. `cached_input_tokens` oznacza cache promptu OpenAI, nie cache materiałów SmartTeacher.
+61. `usage_known = false` oznacza niekompletne usage dostawcy; brakujących tokenów nie zastępujemy zerami.
+62. Błąd po podjęciu próby wywołania OpenAI tworzy zdarzenie `failed` i zachowuje dostępne usage; walidacja zakończona przed wywołaniem nie tworzy zdarzenia.
+63. Telemetria jest best effort: błąd jej zapisu jest logowany, ale nie może zmienić wyniku operacji biznesowej.
+64. `ai_usage_events` ma RLS bez polityk frontendowych; `service_role` ma tylko `SELECT` i `INSERT`, a `PUBLIC`, `anon` i `authenticated` nie mają grantów.
+65. Usunięcie materiału albo dokumentu ustawia odpowiednią relację telemetrii na `NULL`, bez usuwania zdarzenia.
+66. Pakiet 1 monitoringu kosztów nie oblicza kosztu pieniężnego, nie zawiera cenników i nie wykonuje backfillu wcześniejszych wywołań.
+67. Dokładny kontrakt kolejnego pakietu kosztowego wymaga osobnego audytu i zatwierdzenia przed implementacją.

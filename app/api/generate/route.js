@@ -971,7 +971,47 @@ export async function POST(
     }
 
     /*
-      12B. Inne żądanie generuje
+      12B. Brak aktywnego
+      uprawnienia produktowego.
+    */
+    if (
+      cacheClaim.state ===
+        "subscription_required"
+    ) {
+      return jsonResponse(
+        {
+          status:
+            "subscription_required",
+
+          error:
+            "Aktywna subskrypcja SmartTeacher jest wymagana do wygenerowania nowego materiału.",
+        },
+        402
+      )
+    }
+
+    /*
+      12C. Limit okresu został
+      w całości wykorzystany.
+    */
+    if (
+      cacheClaim.state ===
+        "limit_exhausted"
+    ) {
+      return jsonResponse(
+        {
+          status:
+            "generation_limit_exhausted",
+
+          error:
+            "Limit generowań w bieżącym okresie rozliczeniowym został wykorzystany.",
+        },
+        429
+      )
+    }
+
+    /*
+      12D. Inne żądanie generuje
       identyczny materiał.
     */
     if (
@@ -1002,7 +1042,7 @@ export async function POST(
     }
 
     /*
-      12C. Cache MISS:
+      12E. Cache MISS:
       dokładnie jedno wywołanie modelu.
     */
     try {
@@ -1220,6 +1260,12 @@ autoryzacja
 → taskPlan z templates.js
 → generation fingerprint
 → atomowy cache claim
+
+brak aktywnego uprawnienia
+→ 402 bez wywołania modelu
+
+limit wykorzystany
+→ 429 bez wywołania modelu
 
 HIT
 → gotowy content_json

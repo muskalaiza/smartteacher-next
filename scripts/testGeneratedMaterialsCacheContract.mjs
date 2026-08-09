@@ -2,18 +2,63 @@ import assert from "node:assert/strict"
 
 import {
   claimGeneratedMaterial,
+  markGeneratedMaterialFailed,
+  markGeneratedMaterialReady,
 } from "../lib/generation/generatedMaterialsCache.js"
+
+const GENERATED_MATERIAL_ID =
+  "00000000-0000-4000-8000-000000000001"
+
+const RESERVATION_STARTED_AT =
+  "2026-08-05T00:00:00.000Z"
+
+const COMPLETED_AT =
+  "2026-08-05T00:00:02.000Z"
+
+const MATERIAL = {
+  intro: "",
+  tip: [],
+  glossary: [],
+  tasks: [],
+}
 
 const RESERVED_RESULT = [
   {
     claim_state: "reserved",
     generated_material_id:
-      "00000000-0000-4000-8000-000000000001",
+      GENERATED_MATERIAL_ID,
     material_status: "generating",
     claim_content_json: null,
     claim_access_count: 1,
     claim_started_at:
-      "2026-08-05T00:00:00.000Z",
+      RESERVATION_STARTED_AT,
+  },
+]
+
+const READY_RESULT = [
+  {
+    generated_material_id:
+      GENERATED_MATERIAL_ID,
+    material_status: "ready",
+    result_content_json:
+      MATERIAL,
+    result_access_count: 1,
+    result_started_at:
+      RESERVATION_STARTED_AT,
+    result_completed_at:
+      COMPLETED_AT,
+  },
+]
+
+const FAILED_RESULT = [
+  {
+    generated_material_id:
+      GENERATED_MATERIAL_ID,
+    material_status: "failed",
+    result_error_message:
+      "Kontrolowany błąd testowy.",
+    result_completed_at:
+      COMPLETED_AT,
   },
 ]
 
@@ -61,7 +106,9 @@ function buildClaimData(
   }
 }
 
-function createSupabaseAdmin() {
+function createSupabaseAdmin(
+  responses = {}
+) {
   const calls = []
 
   return {
@@ -76,13 +123,174 @@ function createSupabaseAdmin() {
           parameters,
         })
 
-        return {
+        return responses[
+          functionName
+        ] || {
           data: RESERVED_RESULT,
           error: null,
         }
       },
     },
   }
+}
+
+for (const claimState of [
+  "subscription_required",
+  "limit_exhausted",
+]) {
+  const blockedResult = [
+    {
+      claim_state: claimState,
+      generated_material_id: null,
+      material_status: null,
+      claim_content_json: null,
+      claim_access_count: 0,
+      claim_started_at: null,
+    },
+  ]
+
+  const {
+    client,
+    calls,
+  } = createSupabaseAdmin({
+    claim_generated_material: {
+      data: blockedResult,
+      error: null,
+    },
+  })
+
+  const claim =
+    await claimGeneratedMaterial({
+      supabaseAdmin: client,
+      claimData: buildClaimData(),
+    })
+
+  assert.equal(
+    claim.state,
+    claimState
+  )
+
+  assert.equal(
+    claim.generatedMaterialId,
+    null,
+    `${claimState}: stan blokady nie powinien zawierać identyfikatora materiału.`
+  )
+
+  assert.equal(
+    calls.length,
+    1,
+    `${claimState}: adapter powinien wykonać dokładnie jedno RPC.`
+  )
+}
+
+{
+  const {
+    client,
+    calls,
+  } = createSupabaseAdmin({
+    finalize_generated_material_success: {
+      data: READY_RESULT,
+      error: null,
+    },
+  })
+
+  const ready =
+    await markGeneratedMaterialReady({
+      supabaseAdmin: client,
+      ownerId:
+        "00000000-0000-4000-8000-000000000002",
+      generatedMaterialId:
+        GENERATED_MATERIAL_ID,
+      reservationStartedAt:
+        RESERVATION_STARTED_AT,
+      material:
+        MATERIAL,
+      usage: {
+        promptTokens: 100,
+        completionTokens: 25,
+        totalTokens: 125,
+      },
+    })
+
+  assert.equal(
+    calls.length,
+    1,
+    "Gotowy materiał powinien wykonać dokładnie jedno RPC."
+  )
+
+  assert.equal(
+    calls[0].functionName,
+    "finalize_generated_material_success"
+  )
+
+  assert.deepEqual(
+    calls[0].parameters
+      .p_content_json,
+    MATERIAL
+  )
+
+  assert.equal(
+    calls[0].parameters
+      .p_total_tokens,
+    125
+  )
+
+  assert.equal(
+    ready.status,
+    "ready"
+  )
+
+  assert.deepEqual(
+    ready.material,
+    MATERIAL
+  )
+}
+
+{
+  const {
+    client,
+    calls,
+  } = createSupabaseAdmin({
+    finalize_generated_material_failure: {
+      data: FAILED_RESULT,
+      error: null,
+    },
+  })
+
+  const failed =
+    await markGeneratedMaterialFailed({
+      supabaseAdmin: client,
+      ownerId:
+        "00000000-0000-4000-8000-000000000002",
+      generatedMaterialId:
+        GENERATED_MATERIAL_ID,
+      reservationStartedAt:
+        RESERVATION_STARTED_AT,
+      errorMessage:
+        "Kontrolowany błąd testowy.",
+    })
+
+  assert.equal(
+    calls.length,
+    1,
+    "Błąd materiału powinien wykonać dokładnie jedno RPC."
+  )
+
+  assert.equal(
+    calls[0].functionName,
+    "finalize_generated_material_failure"
+  )
+
+  assert.equal(
+    calls[0].parameters
+      .p_error_message,
+    "Kontrolowany błąd testowy."
+  )
+
+  assert.equal(
+    failed.status,
+    "failed"
+  )
 }
 
 {

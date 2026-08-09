@@ -5,6 +5,7 @@
 
 import React, { useState } from "react"
 import { Button } from "../ui/button"
+import { Eye, EyeOff } from "lucide-react";
 
 export default function LoginForm({
   loginEmail,
@@ -16,7 +17,8 @@ export default function LoginForm({
   onRegisterClick,
   onResetPasswordClick,
 }) {
-  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   async function onSubmit(event) {
     event.preventDefault()
@@ -69,17 +71,33 @@ export default function LoginForm({
           Hasło
         </label>
 
-        <input
-          id="login-password"
-          name="login-password"
-          type="password"
-          required
-          autoComplete="off"
-          placeholder="••••••••"
-          value={loginPassword}
-          onChange={(event) => setLoginPassword(event.target.value)}
-          className="w-full rounded-md border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm text-zinc-200 transition-colors placeholder:text-zinc-600 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-        />
+        <div className="relative">
+          <input
+            id="login-password"
+            name="login-password"
+            type={showPassword ? "text" : "password"}
+            required
+            autoComplete="off"
+            placeholder="••••••••"
+            value={loginPassword}
+            onChange={(event) => setLoginPassword(event.target.value)}
+            className="w-full rounded-md border border-zinc-800 bg-zinc-950 px-3 py-2 pr-10 text-sm text-zinc-200 transition-colors placeholder:text-zinc-600 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+          />
+
+          <button
+            type="button"
+            onClick={() => setShowPassword((current) => !current)}
+            aria-label={showPassword ? "Ukryj hasło" : "Pokaż hasło"}
+            aria-pressed={showPassword}
+            className="absolute inset-y-0 right-0 flex w-10 items-center justify-center text-zinc-500 transition-colors hover:text-zinc-200 focus:outline-none focus-visible:text-zinc-200"
+          >
+            {showPassword ? (
+              <EyeOff className="h-4 w-4" aria-hidden="true" />
+            ) : (
+              <Eye className="h-4 w-4" aria-hidden="true" />
+            )}
+          </button>
+        </div>
       </div>
 
       <Button

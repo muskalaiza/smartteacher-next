@@ -5,6 +5,10 @@ import {
   jsonResponse,
 } from "@/lib/api/serverApiHelpers"
 
+import {
+  recordAiUsageEventSafely,
+} from "@/lib/aiUsage/recordAiUsageEvent"
+
 import { ingestTeacherDocumentBlocks } from "@/lib/privateRag/ingestTeacherDocumentBlocks"
 import { ingestTeacherDocumentChunks } from "@/lib/privateRag/ingestTeacherDocumentChunks"
 import { ingestTeacherDocumentEmbeddings } from "@/lib/privateRag/ingestTeacherDocumentEmbeddings"
@@ -91,6 +95,29 @@ const embeddingResult =
     supabaseAdmin,
     documentId,
     ownerId: user.id,
+
+    onAiUsageEvent:
+      ({
+        model,
+        status,
+        usage,
+      }) =>
+        recordAiUsageEventSafely({
+          supabaseAdmin,
+
+          ownerId:
+            user.id,
+
+          operation:
+            "document_embedding",
+
+          sourceDocumentId:
+            documentId,
+
+          model,
+          status,
+          usage,
+        }),
   })
 
 return jsonResponse({

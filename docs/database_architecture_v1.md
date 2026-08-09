@@ -1,17 +1,17 @@
 # SmartTeacher — database_architecture_v1.md
 
-**Wersja dokumentu:** 2.7  
-**Data aktualizacji:** 04.08.2026  
+**Wersja dokumentu:** 2.8  
+**Data aktualizacji:** 05.08.2026  
 **Projekt:** `smartteacher-next`  
 **Supabase:** `smartteacher-next-dev`  
-**Status:** aktualna architektura robocza; Generator kartkówki i karty pracy, atomowy cache, Historia, wspólny klucz, punktacja, indywidualna skala ocen i eksport DOCX są wdrożone  
+**Status:** aktualna architektura robocza; Generator karty pracy, kartkówki i sprawdzianu, atomowy cache, Historia, wspólny klucz, punktacja, indywidualna skala ocen i eksport DOCX są wdrożone  
 **Uwaga:** nazwa pliku pozostaje bez zmiany ze względu na ciągłość źródeł projektu.
 
 ---
 
 ## 0. CEL DOKUMENTU
 
-Dokument opisuje aktualny model danych SmartTeacher oraz decyzje obowiązujące przy dalszym rozwoju Generatora kartkówki i karty pracy, cache, Historii, wspólnego klucza nauczyciela, punktacji, indywidualnej skali ocen i eksportu DOCX.
+Dokument opisuje aktualny model danych SmartTeacher oraz decyzje obowiązujące przy dalszym rozwoju Generatora karty pracy, kartkówki i sprawdzianu, cache, Historii, wspólnego klucza nauczyciela, punktacji, indywidualnej skali ocen i eksportu DOCX.
 
 Nie jest jedną migracją SQL. Rzeczywiste migracje znajdują się w:
 
@@ -51,6 +51,7 @@ Frontend może odczytywać własne dane zgodnie z polityką. Operacje wymagając
 - `anon` nie ma grantu do `generated_materials`,
 - `claim_generated_material` może wykonywać `service_role`,
 - `service_role` ma `SELECT` na `public.subjects`, ponieważ Route Handler zapisuje snapshot nazwy przedmiotu,
+- `service_role` ma `SELECT` na `public.lesson_sections`, ponieważ Sprawdzian weryfikuje prywatny dział po stronie serwera,
 - `create_private_lesson_catalog_from_import(uuid, uuid, uuid, text, text, text)` może wykonywać `authenticated`,
 - aktualna funkcja importu CSV nie jest wykonywalna przez `PUBLIC` ani `anon`,
 - `authenticated` ma `SELECT`, `INSERT` i `UPDATE` wyłącznie do własnego rekordu w `teacher_grade_scales`,
@@ -110,6 +111,13 @@ lesson_topics
 
 lesson_topics + teacher_documents + parametry Generatora
 → generation_fingerprint
+→ claim_generated_material
+→ generated_materials
+
+lesson_sections + lesson_topics + gotowe teacher_documents
+→ lesson_section_sources_v1
+→ zbiorczy source_fingerprint
+→ generation_fingerprint Sprawdzianu
 → claim_generated_material
 → generated_materials
 
@@ -352,7 +360,7 @@ Brak dokumentu jest kontrolowanym przypadkiem biznesowym `no_sources`. Niespójn
 
 ---
 
-## 6. GENERATOR — WDROŻONY PRZEPŁYW
+## 6. GENERATOR — WDROŻONE PRZEPŁYWY
 
 Dla jednego krótkiego dokumentu przypisanego do tematu:
 
@@ -382,9 +390,25 @@ Route Handler obecnie obsługuje pionowe przepływy:
 ```text
 kartkówka
 karta pracy
+sprawdzian
 ```
 
-`sprawdzian` pozostaje nieaktywny do osobnego audytu zakresu źródeł.
+Sprawdzian korzysta z osobnego zakresu:
+
+```text
+lesson_section_id
+→ aktywne lesson_topics w kolejności
+→ maksymalnie jeden gotowy DOCX na temat
+→ weryfikacja source_fingerprint każdego dokumentu
+→ zbiorczy sourceContext
+→ source_fingerprint dla lesson_section_sources_v1
+→ sourceTopicIds w każdym zadaniu
+→ kontrola pokrycia wszystkich dostępnych tematów
+→ atomowy claim cache
+→ generated_materials
+```
+
+Brak gotowych źródeł dla całego działu jest przypadkiem `no_sources`. Jeżeli źródła ma tylko część tematów, Generator zwraca `partial_sources` i wymaga jawnego potwierdzenia nauczyciela przed użyciem dostępnego zakresu.
 
 Dla karty pracy wynik zawiera:
 
@@ -424,6 +448,26 @@ source_file_name_snapshot
 ```
 
 Snapshoty utrzymują czytelność Historii nawet po późniejszej zmianie lub usunięciu rekordu źródłowego.
+
+Dla karty pracy i kartkówki:
+
+```text
+lesson_topic_id = wybrany temat
+source_document_id = jeden DOCX
+topic_title_snapshot = nazwa tematu
+source_file_name_snapshot = nazwa dokumentu
+```
+
+Dla Sprawdzianu:
+
+```text
+lesson_topic_id = NULL
+source_document_id = NULL
+topic_title_snapshot = nazwa działu
+source_file_name_snapshot = uporządkowana lista nazw gotowych DOCX
+```
+
+Nie dodano kolumny `lesson_section_id`. Identyfikator działu należy do kanonicznego `generationManifest` i wpływa na `generation_fingerprint`; zakres źródeł jest identyfikowany przez zbiorczy `source_fingerprint` oraz `source_manifest_version`.
 
 ### 7.2. Parametry materiału
 
@@ -471,12 +515,19 @@ content_schema_version
 model
 ```
 
+Aktualne manifesty źródeł:
+
+```text
+karta pracy / kartkówka → document_chunks_v1
+sprawdzian              → lesson_section_sources_v1
+```
+
 Aktualne wersje kontraktów:
 
 ```text
-karta pracy → material_schema_v3
-kartkówka    → material_schema_v2
-sprawdzian  → material_schema_v2
+karta pracy → material_schema_v6
+kartkówka    → material_schema_v5
+sprawdzian  → material_schema_v6
 ```
 
 Wersja jest częścią `generation_fingerprint`, dlatego zmiana kontraktu powoduje cache MISS bez zmiany schematu tabeli.
@@ -580,7 +631,6 @@ Fingerprint generowania obejmuje wszystkie dane wpływające na wynik:
 
 ```text
 sourceFingerprint
-lessonTopicId
 topicTitle
 materialType
 taskCount
@@ -589,6 +639,9 @@ taskPlan
 generatorVersion
 contentSchemaVersion
 model
+
+karta pracy / kartkówka → lessonTopicId
+sprawdzian              → lessonSectionId
 ```
 
 Następnie:
@@ -854,9 +907,9 @@ tasks.length = task_count
 Historia obsługuje:
 
 ```text
-karta pracy → material_schema_v2, material_schema_v3
-kartkówka    → material_schema_v1, material_schema_v2
-sprawdzian  → material_schema_v1, material_schema_v2
+karta pracy → material_schema_v2–material_schema_v6
+kartkówka    → material_schema_v1–material_schema_v5
+sprawdzian  → material_schema_v1–material_schema_v6
 ```
 
 Starsze pole `context` w `open_explain` nie jest renderowane uczniowi.
@@ -930,13 +983,25 @@ generated_materials_owner_subject_history_idx
 → WHERE status = ready
 ```
 
-Filtr `karta pracy` pokazuje zapisane rekordy. Filtr `sprawdzian` pozostaje pusty do uruchomienia tego przepływu.
+Filtry `karta pracy`, `kartkówka` i `sprawdzian` pokazują zapisane rekordy właściwego typu.
+
+Test runtime Sprawdzianu z 05.08.2026 potwierdził:
+
+```text
+dział = 7 tematów
+ready = 3 tematy / 3 dokumenty / 19 chunków
+missing = 4 tematy
+MISS → zapis ready
+HIT → access_count = 2 i usage 0 / 0 / 0
+```
+
+Końcowy rekord Sprawdzianu korzysta z `material_schema_v6`. Historia otwiera go z nazwą działu jako zakresem i bez wywołania modelu.
 
 Osobną tabelę zdarzeń można dodać później wyłącznie po pojawieniu się realnej potrzeby audytu każdego kliknięcia, retry albo rozliczeń per request.
 
 ---
 
-## 12.7. Kontrakt treści materiałów
+### 12.7. Kontrakt treści materiałów
 
 Aktualny parser zapisuje wyłącznie wynik po walidacji Structured Outputs.
 
@@ -958,15 +1023,45 @@ glossary = []
 tasks: array
 ```
 
+Sprawdzian:
+
+```text
+intro = ""
+tip = []
+glossary = []
+tasks: array
+sourceTopicIds: array wszystkich dostępnych tematów działu
+
+każde tasks[]
+→ sourceTopicIds: niepusta tablica tematów rzeczywiście sprawdzanych przez zadanie
+```
+
+Parser wymaga, aby suma `tasks[].sourceTopicIds` pokrywała wszystkie identyfikatory z głównego `sourceTopicIds` i nie zawierała identyfikatorów spoza zakresu.
+
 `open_explain`:
 
 ```text
 instruction
 expectedAnswer
-answerExplanation
 ```
 
-Pole `context` nie należy do aktualnego kontraktu ucznia. Historyczne pole może istnieć w starszym `content_json`, ale renderer i normalizacja go ignorują.
+Pole `context` nie należy do aktualnego kontraktu ucznia. Osobne `answerExplanation` nie jest wymagane w bieżącym kontrakcie `open_explain`. Historyczne pola mogą istnieć w starszym `content_json`, ale renderer i normalizacja ignorują `context`.
+
+Pozostałe zmienione kontrakty wspólne:
+
+```text
+error_find
+→ instruction
+→ codeWithError bez komentarzy ujawniających odpowiedź
+→ expectedCode
+→ answerExplanation
+
+open_code
+→ requirements
+→ expectedCode
+→ stałe instruction dodawane przez parser
+→ brak wymaganego answerExplanation
+```
 
 Warstwy ASD, ADHD, Dysleksji i Obcojęzycznego są prezentacją tego samego bazowego zestawu zadań, nie osobnymi rekordami ani osobnymi wywołaniami modelu.
 
@@ -1290,7 +1385,103 @@ Runtime w Microsoft Word potwierdził eksport kart pracy i kartkówek z Historii
 
 ---
 
-## 15. ELEMENTY WYCOFANE I ZACHOWANE
+## 15. SPRAWDZIAN DLA CAŁEGO DZIAŁU — WDROŻONY
+
+### 15.1. Warstwa kodu
+
+```text
+app/przedmioty/[subjectKey]/generator/page.jsx
+→ wybór działu
+→ modal partial_sources
+
+app/api/generate/route.js
+→ walidacja lessonSectionId
+→ kontrola prywatnego katalogu i działu
+→ wybór kontekstu tematu albo działu
+
+lib/generation/getLessonSectionSourceContext.js
+→ agregacja i integralność wielu źródeł
+
+lib/generation/buildMaterialResponseSchema.js
+→ sourceTopicIds tylko dla Sprawdzianu
+
+lib/generation/parseGeneratedMaterial.js
+→ kontrola zakresu i pełnego pokrycia tematów
+```
+
+### 15.2. Manifest źródeł działu
+
+`lesson_section_sources_v1` zawiera:
+
+```text
+lessonSectionId
+ordered topics[]
+→ lessonTopicId
+→ title
+→ sourceFingerprint albo null
+→ sourceManifestVersion albo null
+```
+
+Fingerprint jest SHA-256 kanonicznego JSON manifestu. Obejmuje kolejność i pełny katalog aktywnych tematów, dlatego zmienia się również po dodaniu gotowego dokumentu do wcześniej brakującego tematu.
+
+Każdy dokument jest najpierw weryfikowany przez istniejący `buildVerifiedDocumentSourceContext()`. Agregator nie omija kontroli integralności pojedynczych DOCX.
+
+### 15.3. Częściowe źródła
+
+```text
+0 gotowych tematów
+→ LessonSectionSourceNotFoundError
+→ HTTP 422 / no_sources
+
+co najmniej 1 brakujący temat bez potwierdzenia
+→ HTTP 409 / partial_sources
+
+acceptPartialSources = true
+→ generowanie wyłącznie z gotowych tematów
+```
+
+`acceptPartialSources` jest dopuszczone wyłącznie dla `material_type = sprawdzian`. Potwierdzenie nie jest częścią `generation_fingerprint`, ponieważ nie zmienia użytego zestawu źródeł; zestaw identyfikuje `source_fingerprint`.
+
+### 15.4. Relacja z `generated_materials`
+
+Istniejące kolumny `lesson_topic_id` i `source_document_id` są nullable. Sprawdzian zapisuje w nich `NULL`, ponieważ nie ma jednego tematu ani jednego dokumentu.
+
+Nie dodano:
+
+```text
+lesson_section_id w generated_materials
+generation_request_sources
+material_sources
+```
+
+Aktualna potrzeba cache i Historii jest pokryta przez:
+
+```text
+topic_title_snapshot
+source_file_name_snapshot
+source_fingerprint
+source_manifest_version
+generation_fingerprint
+content_json.sourceTopicIds
+```
+
+### 15.5. Uprawnienia
+
+Migracja:
+
+```text
+supabase/sql/2026-08-05_generator_lesson_sections_service_role_select.sql
+```
+
+Nadaje `service_role` wyłącznie `SELECT` na `public.lesson_sections`. Nie zmienia polityk RLS ani grantów `anon` i `authenticated`.
+
+### 15.6. Regresja
+
+Potwierdzono dział z 7 tematami, 3 gotowymi dokumentami i 4 brakującymi źródłami. Zbiorczy kontekst obejmował 3 dokumenty i 19 chunków. MISS utworzył gotowy rekord, a HIT zwiększył `access_count` do 2 bez nowych tokenów.
+
+Końcowy materiał `material_schema_v6` zawierał 7 zadań, profil Standard i 19 pkt. Historia, PDF i DOCX zadziałały. Lint i build są czyste.
+
+## 16. ELEMENTY WYCOFANE I ZACHOWANE
 
 ### Coverage
 
@@ -1309,11 +1500,11 @@ Funkcje semantic search, chunki i embeddingi pozostają w bazie.
 
 Nie są używane przez aktualny Route Handler dla jednego krótkiego DOCX, ale nie należy ich usuwać bez osobnej decyzji dotyczącej długich albo wielu dokumentów.
 
-## 16. CLEANUP BAZY — ZAKOŃCZONY
+## 17. CLEANUP BAZY — ZAKOŃCZONY
 
 Cleanup po stabilizacji Generatora wykonano w trzech oddzielnych migracjach.
 
-### 16.1. Usunięcie coverage cache
+### 17.1. Usunięcie coverage cache
 
 Migracja:
 
@@ -1329,7 +1520,7 @@ public.private_rag_task_type_coverage_cache
 
 Operacja została wykonana bez `CASCADE`. Kontrola końcowa potwierdziła `coverage_table_exists = false`.
 
-### 16.2. Usunięcie zduplikowanych indeksów katalogu
+### 17.2. Usunięcie zduplikowanych indeksów katalogu
 
 Migracja:
 
@@ -1353,7 +1544,7 @@ lesson_topics_catalog_section_active_order_idx
 
 Migracja przed usunięciem sprawdzała równoważność strukturalną i brak powiązania z constraintem.
 
-### 16.3. Cleanup przeciążenia RPC importu CSV
+### 17.3. Cleanup przeciążenia RPC importu CSV
 
 Migracja:
 
@@ -1384,7 +1575,7 @@ authenticated    = true
 
 Ponowny import CSV po migracji potwierdził utworzenie katalogu przypisanego do wybranej klasy.
 
-### 16.4. Elementy świadomie pozostawione
+### 17.4. Elementy świadomie pozostawione
 
 Nie usunięto:
 
@@ -1399,7 +1590,7 @@ Nie usunięto:
 
 Polityki RLS wymagają osobnego audytu pełnej macierzy ról i nie były częścią cleanupu przed startem sprzedaży.
 
-## 17. STORAGE
+## 18. STORAGE
 
 ### `teacher-documents`
 
@@ -1413,7 +1604,7 @@ PDF jest tworzony przez aktualny renderer i mechanizm wydruku przeglądarki. DOC
 
 ---
 
-## 18. ŚWIADOMIE ODŁOŻONE ELEMENTY
+## 19. ŚWIADOMIE ODŁOŻONE ELEMENTY
 
 Nie wdrażać w najbliższym pakiecie:
 
@@ -1434,7 +1625,7 @@ Każdy element wymaga osobnej potrzeby biznesowej i testu.
 
 ---
 
-## 19. KOLEJNOŚĆ DALSZEGO WDROŻENIA
+## 20. KOLEJNOŚĆ DALSZEGO WDROŻENIA
 
 Zakończone:
 
@@ -1470,19 +1661,25 @@ Zakończone dodatkowo:
 24. końcowa regresja karty pracy 6 / 7 + HIT / no_sources
 25. regresja punktacji: 3 typy materiałów × 5 / 6 / 7
 26. audyt i eksport DOCX
+27. regresja kartkówki i wspólnego kontraktu zadań
+28. Sprawdzian dla całego działu
+29. lesson_section_sources_v1 i pokrycie sourceTopicIds
+30. częściowe źródła z jawnym potwierdzeniem nauczyciela
+31. Historia, PDF i DOCX Sprawdzianu
 ```
 
 Następnie:
 
 ```text
-27. regresja kartkówki material_schema_v2
-28. sprawdzian
-29. limity, koszty i sprzedaż
+32. panel i monitoring kosztów produktu
+33. limity i subskrypcje
+34. własne SMTP i testy procesów konta
+35. testy z nauczycielami przed płatnym pilotażem
 ```
 
-## 20. DECYZJE OBOWIĄZUJĄCE
+## 21. DECYZJE OBOWIĄZUJĄCE
 
-1. `lesson_topic_id` jest głównym kluczem operacyjnym tematu.
+1. `lesson_topic_id` jest głównym kluczem operacyjnym karty pracy i kartkówki; `lesson_section_id` wyznacza zakres Sprawdzianu.
 2. Jeden krótki DOCX opisuje jeden temat.
 3. Pełny dokument jest kontekstem Generatora dla tego przypadku.
 4. Liczba zadań wynosi 5, 6 albo 7.
@@ -1513,9 +1710,9 @@ Następnie:
 29. Skala nie jest zapisywana w `generated_materials` i nie wpływa na `generation_fingerprint` ani cache.
 30. Aktualna skala konta jest używana również przy wcześniejszych materiałach z Historii.
 31. Import skali ocen z CSV nie jest częścią aktualnego produktu.
-32. Karta pracy dla wszystkich profili jest aktywna i korzysta z `material_schema_v3`.
+32. Karta pracy dla wszystkich profili jest aktywna i korzysta z `material_schema_v6`.
 33. `intro`, `tip`, `glossary` i `tasks` karty pracy powstają w jednym wywołaniu modelu.
-34. `open_explain` nie zawiera `context` pokazywanego uczniowi.
+34. `open_explain` nie zawiera `context` pokazywanego uczniowi ani wymaganego osobnego `answerExplanation`.
 35. Historia obsługuje wersje kontraktów per `material_type`, nie jeden globalny string.
 36. Zmiana CSS lub renderera zmienia ponownie wygenerowany PDF z Historii bez zmiany `content_json` i bez wywołania modelu.
 37. Końcowa regresja karty pracy i macierz punktacji 3 × 3 są zakończone.
@@ -1523,4 +1720,16 @@ Następnie:
 39. Eksport DOCX działa w Generatorze i Historii przez `GeneratedMaterial`; nie wywołuje modelu ani Route Handlera Generatora.
 40. DOCX nie jest przechowywany w Storage ani w osobnej tabeli i nie zmienia `access_count`, `last_accessed_at`, `content_json` ani `generation_fingerprint`.
 41. Eksporter używa istniejących źródeł prawdy: `getTaskProfilePresentation`, `getTaskPoints`, `buildTeacherAnswerKey` i `buildTeacherGradeScaleRanges`.
-42. Pakiet eksportu DOCX jest zakończony. Następnym krokiem jest regresja kartkówki `material_schema_v2`, ze szczególną kontrolą samowystarczalności `open_explain`.
+42. Pakiet eksportu DOCX jest zakończony.
+43. Aktualne wersje kontraktów to: karta pracy `material_schema_v6`, kartkówka `material_schema_v5`, Sprawdzian `material_schema_v6`.
+44. `error_find` przechowuje pełny `codeWithError`, pełny `expectedCode` i `answerExplanation`; wariant mechanicznej zamiany fragmentów został wycofany.
+45. `open_code` przechowuje `requirements` i `expectedCode`; stałe polecenie dodaje parser, a `answerExplanation` nie jest wymagane.
+46. Źródła nauczyciela wyznaczają zakres pytań i wymagań; wiedza przedmiotowa modelu służy wyłącznie do poprawnego rozwiązania, sprawdzenia i wyjaśnienia odpowiedzi.
+47. Sprawdzian obejmuje cały dział i korzysta ze wszystkich aktywnych tematów posiadających gotowy DOCX.
+48. Jeden temat może mieć maksymalnie jeden dokument źródłowy; wiele dokumentów Sprawdzianu oznacza po jednym dokumencie dla wielu tematów.
+49. Zbiorczy manifest Sprawdzianu ma wersję `lesson_section_sources_v1` i uwzględnia również brakujące tematy z wartościami `null`.
+50. Częściowy zakres Sprawdzianu wymaga jawnego potwierdzenia nauczyciela; brak wszystkich źródeł zatrzymuje Generator przed wywołaniem modelu.
+51. Każde zadanie Sprawdzianu ma `sourceTopicIds`, a parser wymaga pokrycia wszystkich dostępnych tematów.
+52. Sprawdzian zapisuje `lesson_topic_id = NULL` i `source_document_id = NULL`; nie dodano kolumny `lesson_section_id` do `generated_materials`.
+53. `service_role` ma wyłącznie wymagany odczyt `public.lesson_sections`; granty `anon`, `authenticated` i polityki RLS nie zostały rozszerzone.
+54. Pakiet Sprawdzianu jest zakończony. Następnym zaplanowanym obszarem jest panel i monitoring kosztów produktu.

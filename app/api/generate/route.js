@@ -6,6 +6,10 @@ import {
 } from "@/lib/api/serverApiHelpers"
 
 import {
+  recordAiUsageEventSafely,
+} from "@/lib/aiUsage/recordAiUsageEvent"
+
+import {
   buildGenerationIdentity,
 } from "@/lib/generation/buildGenerationIdentity"
 
@@ -1033,6 +1037,30 @@ export async function POST(
           model:
             generationManifest
               .model,
+
+          onAiUsageEvent:
+            ({
+              model,
+              status,
+              usage,
+            }) =>
+              recordAiUsageEventSafely({
+                supabaseAdmin,
+
+                ownerId:
+                  user.id,
+
+                operation:
+                  "material_generation",
+
+                generatedMaterialId:
+                  cacheClaim
+                    .generatedMaterialId,
+
+                model,
+                status,
+                usage,
+              }),
         })
 
       const readyRecord =

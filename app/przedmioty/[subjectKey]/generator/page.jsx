@@ -2,7 +2,7 @@
 "use client";
 import { useState } from "react";
 
-import { WandSparkles } from "lucide-react";
+import { ArrowLeft, WandSparkles } from "lucide-react";
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
@@ -353,9 +353,10 @@ const canGenerate =
       <header className="space-y-4">
         <Link
           href="/dashboard"
-          className="inline-flex items-center text-sm text-zinc-400 transition-colors hover:text-zinc-100"
+          className="inline-flex items-center gap-2 text-sm text-zinc-400 transition-colors hover:text-zinc-100"
         >
-          ← Wróć do wyboru przedmiotu
+          <ArrowLeft className="h-4 w-4" aria-hidden="true" />
+          Wróć do wyboru przedmiotu
         </Link>
 
         <div className="max-w-3xl space-y-3">

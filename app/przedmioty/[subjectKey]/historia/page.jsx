@@ -12,6 +12,8 @@ import {
 import { useActiveTeacherSubject } from "@/lib/subjects/useActiveTeacherSubject";
 import { supabase } from "@/lib/supabaseClient";
 
+import { ArrowLeft } from "lucide-react";
+
 const MATERIAL_TYPE_OPTIONS = [
   {
     value: "all",
@@ -271,8 +273,9 @@ export default function SubjectHistoriaPage() {
 
         <Link
           href="/dashboard"
-          className="inline-flex items-center justify-center rounded-xl bg-sky-500 px-5 py-3 text-sm font-semibold text-white transition hover:bg-sky-400"
+          className="inline-flex items-center justify-center gap-2 rounded-xl bg-sky-500 px-5 py-3 text-sm font-semibold text-white transition hover:bg-sky-400"
         >
+          <ArrowLeft className="h-4 w-4" aria-hidden="true" />
           Wróć do wyboru przedmiotu
         </Link>
       </div>
@@ -288,9 +291,10 @@ export default function SubjectHistoriaPage() {
           <button
             type="button"
             onClick={handleBackToHistory}
-            className="inline-flex items-center text-sm text-zinc-400 transition-colors hover:text-zinc-100"
+            className="inline-flex items-center gap-2 text-sm text-zinc-400 transition-colors hover:text-zinc-100"
           >
-            ← Wróć do historii
+            <ArrowLeft className="h-4 w-4" aria-hidden="true" />
+            Wróć do historii
           </button>
 
           <div className="max-w-3xl space-y-3">
@@ -321,9 +325,10 @@ export default function SubjectHistoriaPage() {
       <header className="space-y-4">
         <Link
           href="/dashboard"
-          className="inline-flex items-center text-sm text-zinc-400 transition-colors hover:text-zinc-100"
+          className="inline-flex items-center gap-2 text-sm text-zinc-400 transition-colors hover:text-zinc-100"
         >
-          ← Wróć do wyboru przedmiotu
+          <ArrowLeft className="h-4 w-4" aria-hidden="true" />
+          Wróć do wyboru przedmiotu
         </Link>
 
         <div className="max-w-3xl space-y-3">

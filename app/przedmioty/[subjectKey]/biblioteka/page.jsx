@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
+import { ArrowLeft } from "lucide-react";
 import { supabase } from "@/lib/supabaseClient";
 import { useActiveTeacherSubject } from "@/lib/subjects/useActiveTeacherSubject";
 import {
@@ -475,8 +476,9 @@ if (
 
         <Link
           href="/dashboard"
-          className="inline-flex items-center justify-center rounded-xl bg-sky-500 px-5 py-3 text-sm font-semibold text-white transition hover:bg-sky-400"
+          className="inline-flex items-center justify-center gap-2 rounded-xl bg-sky-500 px-5 py-3 text-sm font-semibold text-white transition hover:bg-sky-400"
         >
+          <ArrowLeft className="h-4 w-4" aria-hidden="true" />
           Wróć do wyboru przedmiotu
         </Link>
       </div>
@@ -490,9 +492,10 @@ if (
       <header className="space-y-4">
         <Link
           href="/dashboard"
-          className="inline-flex items-center text-sm text-zinc-400 transition-colors hover:text-zinc-100"
+          className="inline-flex items-center gap-2 text-sm text-zinc-400 transition-colors hover:text-zinc-100"
         >
-          ← Wróć do wyboru przedmiotu
+          <ArrowLeft className="h-4 w-4" aria-hidden="true" />
+          Wróć do wyboru przedmiotu
         </Link>
 
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">

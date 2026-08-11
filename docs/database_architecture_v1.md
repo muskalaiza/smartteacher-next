@@ -1,10 +1,10 @@
 # SmartTeacher — database_architecture_v1.md
 
-**Wersja dokumentu:** 3.0  
+**Wersja dokumentu:** 3.1  
 **Data aktualizacji:** 11.08.2026  
 **Projekt:** `smartteacher-next`  
 **Supabase:** `smartteacher-next-dev`  
-**Status:** aktualna architektura robocza; Generator karty pracy, kartkówki i sprawdzianu, atomowy cache, Historia, wspólny klucz, punktacja, indywidualna skala ocen, eksport DOCX, serwerowa telemetria OpenAI, atomowy limit generowania oraz backend Stripe są wdrożone; pakiet subskrypcji pozostaje otwarty do testu Sandbox i wykonania UI  
+**Status:** aktualna architektura robocza; Generator karty pracy, kartkówki i sprawdzianu, atomowy cache, Historia, wspólny klucz, punktacja, indywidualna skala ocen, eksport DOCX, serwerowa telemetria OpenAI, atomowy limit generowania, backend Stripe oraz pełny test Sandbox są zakończone; pakiet subskrypcji pozostaje otwarty na UI i regresję  
 **Uwaga:** nazwa pliku pozostaje bez zmiany ze względu na ciągłość źródeł projektu.
 
 ---
@@ -2166,14 +2166,44 @@ reserved_count = 0
 
 Test kontraktu Stripe, ESLint i build są czyste.
 
-### 19.12. Granica otwartego pakietu
-
-Fundament bazy i backend są zakończone. Cały pakiet pozostaje otwarty do czasu:
+Kontrolowany test Stripe Sandbox z 11.08.2026 potwierdził pełny przepływ:
 
 ```text
-konfiguracji Sandbox i webhooka
-→ testu Checkout, webhooka, statusu i portalu na osobnym koncie
-→ wykonania strony /subskrypcja
+osobne konto testowe
+→ Checkout planu 29 zł / 20 kompletów
+→ poprawnie dostarczone webhooki z HTTP 200
+→ zapis teacher_subscriptions i subscription_usage_periods
+→ poprawna odpowiedź GET /api/billing/status
+→ rzeczywista sesja Stripe Customer Portal
+```
+
+Konfiguracja portalu pozwala anulować subskrypcję z końcem opłaconego okresu i wraca docelowo do `/subskrypcja`.
+
+Audyt rzeczywistego katalogu PostgreSQL potwierdził dla wszystkich siedmiu tabel pakietu:
+
+```text
+rls_enabled = true
+rls_forced = false
+```
+
+Po teście subskrypcja została anulowana natychmiast. Webhook `customer.subscription.deleted` został dostarczony z HTTP 200, klient testowy został usunięty ze Stripe, a użytkownik testowy z Supabase Auth. Audyt po usunięciu zwrócił `0` osieroconych rekordów w:
+
+```text
+billing_customers
+teacher_subscriptions
+subscription_usage_periods
+generation_quota_reservations
+internal_entitlements
+```
+
+`billing_webhook_events` nie ma relacji właścicielskiej do `auth.users` i pozostało jako techniczny rejestr przetworzonych webhooków.
+
+### 19.12. Granica otwartego pakietu
+
+Fundament bazy, backend i pełny test Sandbox są zakończone. Cały pakiet pozostaje otwarty do czasu:
+
+```text
+wykonania strony /subskrypcja
 → podłączenia komunikatów limitu i dostępu w UI Generatora
 → pełnej regresji
 ```
@@ -2264,12 +2294,12 @@ Zakończone dodatkowo:
 37. finalizacja sukcesu i błędu Generatora powiązana z licznikiem okresu
 38. backend Stripe: status, Checkout, portal i webhook
 39. końcowy plan 29 zł / 20 kompletów oraz przypisanie Stripe price_id
+40. konfiguracja sekretów, webhooka i kontrolowany test Stripe Sandbox
 ```
 
 Następnie:
 
 ```text
-40. konfiguracja sekretów, webhooka i kontrolowany test Stripe Sandbox
 41. strona /subskrypcja oraz komunikaty limitu i dostępu w UI Generatora
 42. pełna regresja i zamknięcie pakietu limitów i subskrypcji
 43. własne SMTP i testy procesów konta
@@ -2356,4 +2386,5 @@ Następnie:
 75. `billing_customers` jest kanonicznym mapowaniem `auth.users.id` do jednego Stripe Customer.
 76. Webhook weryfikuje podpis na surowym body, pobiera aktualną subskrypcję ze Stripe i synchronizuje ją idempotentnie przez `provider_event_id`.
 77. Backend sprawdza cenę Stripe względem planu w Supabase przed utworzeniem Checkout; sama migracja SQL nie weryfikuje zdalnego obiektu Stripe.
-78. Cały pakiet limitów i subskrypcji pozostaje otwarty do testu Sandbox, wykonania strony `/subskrypcja`, podłączenia komunikatów Generatora i końcowej regresji.
+78. Pełny test Stripe Sandbox, portal klienta, audyt RLS i cleanup danych testowych są zakończone.
+79. Cały pakiet limitów i subskrypcji pozostaje otwarty do wykonania strony `/subskrypcja`, podłączenia komunikatów Generatora i końcowej regresji.

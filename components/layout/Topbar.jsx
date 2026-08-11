@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from "react"
 import Link from "next/link"
-import { HelpCircle, LogOut, Settings } from "lucide-react"
+import { CreditCard, HelpCircle, LogOut, Settings } from "lucide-react"
 import { Button } from "../ui/button"
 import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover"
 import { useSidebarToggle } from "./AppShell"
@@ -146,6 +146,14 @@ export default function Topbar() {
             >
               <Settings className="h-4 w-4 text-zinc-500" />
               <span>Ustawienia konta</span>
+            </Link>
+
+            <Link
+              href="/subskrypcja"
+              className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-sm text-zinc-300 transition-colors hover:bg-zinc-800 hover:text-zinc-100"
+            >
+              <CreditCard className="h-4 w-4 text-zinc-500" />
+              <span>Subskrypcja</span>
             </Link>
 
            <button

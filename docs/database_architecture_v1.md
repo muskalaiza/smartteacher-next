@@ -1,17 +1,17 @@
 # SmartTeacher — database_architecture_v1.md
 
-**Wersja dokumentu:** 2.9  
-**Data aktualizacji:** 09.08.2026  
+**Wersja dokumentu:** 3.0  
+**Data aktualizacji:** 11.08.2026  
 **Projekt:** `smartteacher-next`  
 **Supabase:** `smartteacher-next-dev`  
-**Status:** aktualna architektura robocza; Generator karty pracy, kartkówki i sprawdzianu, atomowy cache, Historia, wspólny klucz, punktacja, indywidualna skala ocen, eksport DOCX oraz serwerowa telemetria wywołań OpenAI są wdrożone  
+**Status:** aktualna architektura robocza; Generator karty pracy, kartkówki i sprawdzianu, atomowy cache, Historia, wspólny klucz, punktacja, indywidualna skala ocen, eksport DOCX, serwerowa telemetria OpenAI, atomowy limit generowania oraz backend Stripe są wdrożone; pakiet subskrypcji pozostaje otwarty do testu Sandbox i wykonania UI  
 **Uwaga:** nazwa pliku pozostaje bez zmiany ze względu na ciągłość źródeł projektu.
 
 ---
 
 ## 0. CEL DOKUMENTU
 
-Dokument opisuje aktualny model danych SmartTeacher oraz decyzje obowiązujące przy dalszym rozwoju Generatora karty pracy, kartkówki i sprawdzianu, cache, Historii, wspólnego klucza nauczyciela, punktacji, indywidualnej skali ocen, eksportu DOCX i monitoringu użycia OpenAI.
+Dokument opisuje aktualny model danych SmartTeacher oraz decyzje obowiązujące przy dalszym rozwoju Generatora karty pracy, kartkówki i sprawdzianu, cache, Historii, wspólnego klucza nauczyciela, punktacji, indywidualnej skali ocen, eksportu DOCX, monitoringu użycia OpenAI, limitów generowania i subskrypcji Stripe.
 
 Nie jest jedną migracją SQL. Rzeczywiste migracje znajdują się w:
 
@@ -1853,7 +1853,334 @@ dokładnie jedno zdarzenie
 
 Migracja, live schema, constraints, indeksy, RLS, granty, instrumentacja, lint i build zostały potwierdzone. Pakiet został zatwierdzony w repozytorium.
 
-## 19. STORAGE
+## 19. LIMITY I SUBSKRYPCJE — FUNDAMENT I BACKEND WDROŻONE
+
+### 19.1. Obowiązujący kontrakt planu
+
+Aktualny plan startowy:
+
+```text
+plan_key = smartteacher_monthly_pln_v1
+display_name = SmartTeacher — plan miesięczny
+currency = PLN
+price_gross_minor = 2900
+billing_interval = month
+billing_interval_count = 1
+generation_limit = 20
+billing_provider = stripe
+provider_price_id = price_1U31CvIkqkfu7eeDNuEEBxj9
+is_active = true
+```
+
+Jedna jednostka limitu oznacza jeden poprawnie zakończony cache MISS Generatora, niezależnie od liczby profili w komplecie.
+
+```text
+cache HIT
+→ brak rezerwacji i brak zużycia limitu
+
+cache MISS
+→ atomowa rezerwacja jednej jednostki
+
+sukces generowania
+→ reserved_count - 1
+→ used_count + 1
+
+błąd generowania
+→ reserved_count - 1
+→ used_count bez zmiany
+```
+
+`ai_usage_events` nie jest licznikiem subskrypcji. Telemetria OpenAI i limit produktu mają oddzielne odpowiedzialności.
+
+### 19.2. `subscription_plans`
+
+Tabela przechowuje wersjonowany kontrakt planu oferowanego klientom:
+
+| Kolumna | Odpowiedzialność |
+|---|---|
+| `id` | klucz techniczny planu |
+| `plan_key` | stabilny klucz biznesowy |
+| `display_name` | nazwa wyświetlana |
+| `currency` | waluta ISO, obecnie `PLN` |
+| `price_gross_minor` | cena w najmniejszej jednostce waluty, obecnie `2900` |
+| `billing_interval` | obecnie wyłącznie `month` |
+| `billing_interval_count` | obecnie `1` |
+| `generation_limit` | limit nowych kompletów na okres, obecnie `20` |
+| `billing_provider` | obecnie wyłącznie `stripe` |
+| `provider_price_id` | identyfikator obiektu Stripe Price |
+| `is_active` | dostępność planu dla nowych Checkout |
+| `created_at`, `updated_at` | metadane czasu |
+
+`provider_price_id` jest unikalny dla aktywnego powiązania planu. Backend przed utworzeniem Checkout pobiera obiekt Stripe Price i sprawdza jego aktywność, tryb Sandbox / Live, identyfikator, walutę, kwotę oraz interwał.
+
+### 19.3. `internal_entitlements`
+
+Tabela przechowuje wewnętrzne uprawnienia, które nie są subskrypcją Stripe. Aktualnie istnieje typ:
+
+```text
+entitlement_type = project_owner
+```
+
+Jedno konto ma najwyżej jedno takie uprawnienie identyfikowane przez `owner_id`. Uprawnienie właścicielskie korzysta z tego samego planu i miesięcznego limitu, ale nie tworzy klienta ani subskrypcji w Stripe.
+
+Aktywne `internal_entitlement` ma pierwszeństwo przy ustalaniu dostępu i celowo blokuje utworzenie Checkout dla tego samego konta.
+
+### 19.4. `teacher_subscriptions` i `billing_customers`
+
+`billing_customers` przechowuje trwałe mapowanie:
+
+```text
+auth.users.id
+↔ Stripe Customer cus_...
+```
+
+`owner_id` oraz `provider_customer_id` są unikalne. Jeden klient Stripe nie może zostać przypisany do dwóch kont SmartTeacher.
+
+`teacher_subscriptions` przechowuje lokalny snapshot subskrypcji Stripe:
+
+```text
+owner_id
+plan_id
+provider_customer_id
+provider_subscription_id
+provider_subscription_created_at
+provider_event_created_at
+provider_event_id
+status
+cancel_at_period_end
+current_period_start
+current_period_end
+canceled_at
+ended_at
+```
+
+Obsługiwane statusy:
+
+```text
+incomplete
+incomplete_expired
+trialing
+active
+past_due
+unpaid
+paused
+canceled
+```
+
+Jedno konto może mieć najwyżej jedną nieterminalną subskrypcję. Statusy terminalne to `canceled` i `incomplete_expired`.
+
+### 19.5. `subscription_usage_periods`
+
+Tabela przechowuje snapshot limitu dla konkretnego okresu użycia:
+
+```text
+owner_id
+plan_id
+subscription_id XOR internal_entitlement_id
+period_start
+period_end
+generation_limit
+used_count
+reserved_count
+```
+
+Dokładnie jedno źródło okresu musi być ustawione: subskrypcja Stripe albo wewnętrzne uprawnienie. Obowiązuje constraint:
+
+```text
+used_count >= 0
+reserved_count >= 0
+used_count + reserved_count <= generation_limit
+```
+
+`generation_limit` jest snapshotem okresu. Zakończone okresy zachowują historyczny limit nawet po zmianie planu.
+
+### 19.6. `generation_quota_reservations`
+
+Tabela łączy konkretną próbę cache MISS z okresem użycia i materiałem:
+
+```text
+owner_id
+usage_period_id
+generated_material_id
+reservation_started_at
+state = reserved | consumed | released
+reserved_at
+consumed_at
+released_at
+release_reason
+```
+
+Jedna próba materiału może mieć najwyżej jedną aktywną rezerwację. Relacja do `generated_materials` używa `ON DELETE SET NULL`, aby usunięcie materiału nie niszczyło śladu operacji limitu.
+
+### 19.7. Atomowe RPC Generatora
+
+Rozszerzone `claim_generated_material` wykonuje pod wspólną blokadą właściciela:
+
+```text
+ustalenie aktywnego internal_entitlement albo subskrypcji
+→ utworzenie lub odczyt okresu użycia
+→ sprawdzenie cache
+→ sprawdzenie limitu
+→ rezerwacja jednej jednostki dla MISS
+```
+
+Obsługiwane stany claimu:
+
+```text
+hit
+miss
+in_progress
+subscription_required
+limit_exhausted
+```
+
+Finalizacja odbywa się przez:
+
+```text
+finalize_generated_material_success
+→ zapis ready
+→ consumed
+→ reserved_count - 1
+→ used_count + 1
+
+finalize_generated_material_failure
+→ zapis failed
+→ released
+→ reserved_count - 1
+```
+
+Wszystkie trzy funkcje są `SECURITY DEFINER`, mają jawny `search_path` i są dostępne wyłącznie dla `service_role`.
+
+### 19.8. `billing_webhook_events` i synchronizacja Stripe
+
+Tabela zapisuje stan przetwarzania zweryfikowanych zdarzeń:
+
+```text
+provider_event_id UNIQUE
+event_type
+livemode
+status = processing | processed | failed
+error_message
+received_at
+processed_at
+updated_at
+```
+
+Webhook przyjmuje surowe body, weryfikuje podpis `stripe-signature`, pobiera aktualną subskrypcję ze Stripe i normalizuje jej dane. Obsługiwane są:
+
+```text
+checkout.session.completed
+customer.subscription.created
+customer.subscription.updated
+customer.subscription.deleted
+customer.subscription.paused
+customer.subscription.resumed
+invoice.paid
+invoice.payment_failed
+```
+
+`sync_stripe_subscription_event` atomowo:
+
+- blokuje operacje dla jednego `owner_id`,
+- zapewnia idempotencję po `provider_event_id`,
+- sprawdza zgodność trybu, planu, ceny, klienta i subskrypcji,
+- aktualizuje snapshot `teacher_subscriptions`,
+- tworzy albo zachowuje okres użycia dla aktywnej subskrypcji,
+- zwraca `applied` albo `duplicate`.
+
+Funkcja nie przyjmuje niezaufanego payloadu bezpośrednio. Wywołuje ją dopiero backend po weryfikacji podpisu i pobraniu aktualnego obiektu subskrypcji ze Stripe.
+
+### 19.9. RLS i granty
+
+Wszystkie tabele pakietu mają włączone RLS i nie mają polityk frontendowych. `PUBLIC`, `anon` i `authenticated` nie mają bezpośrednich grantów.
+
+Minimalne granty `service_role`:
+
+```text
+subscription_plans              → SELECT
+teacher_subscriptions           → SELECT, INSERT, UPDATE
+internal_entitlements           → SELECT
+subscription_usage_periods      → SELECT
+generation_quota_reservations   → SELECT
+billing_webhook_events          → SELECT, INSERT, UPDATE
+billing_customers               → SELECT, INSERT
+```
+
+Frontend otrzymuje wyłącznie oczyszczony status przez Route Handler.
+
+### 19.10. Warstwa aplikacji i konfiguracja
+
+```text
+GET  /api/billing/status
+→ dostęp, status subskrypcji, plan, użycie i dozwolone akcje
+
+POST /api/billing/checkout
+→ walidacja planu i utworzenie albo ponowne użycie sesji Checkout
+
+POST /api/billing/portal
+→ sesja Stripe Customer Portal dla istniejącego klienta
+
+POST /api/billing/webhook
+→ weryfikacja podpisu i synchronizacja zdarzenia
+```
+
+Wymagane zmienne serwerowe:
+
+```text
+STRIPE_SECRET_KEY
+STRIPE_WEBHOOK_SECRET
+SMARTTEACHER_APP_URL
+```
+
+Aktualny przepływ używa hostowanego Stripe Checkout i serwerowego przekierowania, dlatego kod nie wymaga `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`.
+
+### 19.11. Migracje i potwierdzony stan
+
+```text
+2026-08-09_subscription_quota_foundation.sql
+→ tabele limitu i atomowe RPC Generatora
+
+2026-08-09_subscription_quota_stripe_backend.sql
+→ billing_customers i atomowa synchronizacja webhooka
+
+2026-08-10_subscription_plan_launch_price.sql
+→ korekta historycznej ceny planu z 39 zł do 29 zł
+
+2026-08-10_subscription_plan_generation_limit.sql
+→ korekta limitu z 50 do 20
+
+2026-08-11_subscription_plan_stripe_price_id.sql
+→ przypisanie zatwierdzonego price_id Stripe Sandbox
+```
+
+Historyczne wartości `39 zł / 50` pozostają w pierwszej migracji jako część historii zmian, ale nie opisują aktualnego planu.
+
+Potwierdzony stan bieżącego okresu właścicielskiego:
+
+```text
+09.08.2026–09.09.2026
+generation_limit = 20
+used_count = 1
+reserved_count = 0
+```
+
+Test kontraktu Stripe, ESLint i build są czyste.
+
+### 19.12. Granica otwartego pakietu
+
+Fundament bazy i backend są zakończone. Cały pakiet pozostaje otwarty do czasu:
+
+```text
+konfiguracji Sandbox i webhooka
+→ testu Checkout, webhooka, statusu i portalu na osobnym koncie
+→ wykonania strony /subskrypcja
+→ podłączenia komunikatów limitu i dostępu w UI Generatora
+→ pełnej regresji
+```
+
+Strona UI należy do tego samego pakietu limitów i subskrypcji; nie jest odłożona jako osobny przyszły etap.
+
+## 20. STORAGE
 
 ### `teacher-documents`
 
@@ -1867,7 +2194,7 @@ PDF jest tworzony przez aktualny renderer i mechanizm wydruku przeglądarki. DOC
 
 ---
 
-## 20. ŚWIADOMIE ODŁOŻONE ELEMENTY
+## 21. ŚWIADOMIE ODŁOŻONE ELEMENTY
 
 Nie wdrażać w najbliższym pakiecie:
 
@@ -1888,7 +2215,7 @@ Każdy element wymaga osobnej potrzeby biznesowej i testu.
 
 ---
 
-## 21. KOLEJNOŚĆ DALSZEGO WDROŻENIA
+## 22. KOLEJNOŚĆ DALSZEGO WDROŻENIA
 
 Zakończone:
 
@@ -1933,18 +2260,24 @@ Zakończone dodatkowo:
 33. migracja ai_usage_events
 34. instrumentacja Generatora i embeddingów
 35. testy kontraktowe oraz smoke testy telemetrii
+36. fundament limitów i atomowa rezerwacja cache MISS
+37. finalizacja sukcesu i błędu Generatora powiązana z licznikiem okresu
+38. backend Stripe: status, Checkout, portal i webhook
+39. końcowy plan 29 zł / 20 kompletów oraz przypisanie Stripe price_id
 ```
 
 Następnie:
 
 ```text
-36. audyt i zatwierdzenie kontraktu kolejnego pakietu kosztowego
-37. limity i subskrypcje
-38. własne SMTP i testy procesów konta
-39. testy z nauczycielami przed płatnym pilotażem
+40. konfiguracja sekretów, webhooka i kontrolowany test Stripe Sandbox
+41. strona /subskrypcja oraz komunikaty limitu i dostępu w UI Generatora
+42. pełna regresja i zamknięcie pakietu limitów i subskrypcji
+43. własne SMTP i testy procesów konta
+44. kontrolowany start sprzedaży i pierwsi płacący klienci
+45. Monitoring kosztów — Pakiet 2 po osobnym audycie kontraktu
 ```
 
-## 22. DECYZJE OBOWIĄZUJĄCE
+## 23. DECYZJE OBOWIĄZUJĄCE
 
 1. `lesson_topic_id` jest głównym kluczem operacyjnym karty pracy i kartkówki; `lesson_section_id` wyznacza zakres Sprawdzianu.
 2. Jeden krótki DOCX opisuje jeden temat.
@@ -2013,3 +2346,14 @@ Następnie:
 65. Usunięcie materiału albo dokumentu ustawia odpowiednią relację telemetrii na `NULL`, bez usuwania zdarzenia.
 66. Pakiet 1 monitoringu kosztów nie oblicza kosztu pieniężnego, nie zawiera cenników i nie wykonuje backfillu wcześniejszych wywołań.
 67. Dokładny kontrakt kolejnego pakietu kosztowego wymaga osobnego audytu i zatwierdzenia przed implementacją.
+68. Plan startowy SmartTeacher kosztuje 29,00 PLN brutto miesięcznie i obejmuje 20 nowych kompletów materiałów w okresie rozliczeniowym.
+69. Jedna jednostka limitu to jeden poprawnie zakończony cache MISS, niezależnie od liczby profili; cache HIT nie zużywa limitu.
+70. Jednostka jest najpierw rezerwowana, po sukcesie zużywana, a po błędzie zwalniana atomowo w PostgreSQL.
+71. `subscription_usage_periods.generation_limit` jest snapshotem okresu; zakończonych okresów nie aktualizujemy po zmianie planu.
+72. `ai_usage_events` pozostaje rejestrem wywołań OpenAI i nie zastępuje licznika limitu produktu.
+73. Konto właścicielskie używa `internal_entitlement`, nie fikcyjnej subskrypcji Stripe, i ma ten sam miesięczny limit planu.
+74. Tabele billingowe są serwerowe: RLS jest włączone, frontend nie ma bezpośrednich grantów, a operacje krytyczne wykonuje `service_role`.
+75. `billing_customers` jest kanonicznym mapowaniem `auth.users.id` do jednego Stripe Customer.
+76. Webhook weryfikuje podpis na surowym body, pobiera aktualną subskrypcję ze Stripe i synchronizuje ją idempotentnie przez `provider_event_id`.
+77. Backend sprawdza cenę Stripe względem planu w Supabase przed utworzeniem Checkout; sama migracja SQL nie weryfikuje zdalnego obiektu Stripe.
+78. Cały pakiet limitów i subskrypcji pozostaje otwarty do testu Sandbox, wykonania strony `/subskrypcja`, podłączenia komunikatów Generatora i końcowej regresji.

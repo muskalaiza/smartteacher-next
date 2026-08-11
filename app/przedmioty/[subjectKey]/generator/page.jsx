@@ -12,6 +12,8 @@ import { useActiveTeacherSubject } from "@/lib/subjects/useActiveTeacherSubject"
 
 import { supabase } from "@/lib/supabaseClient";
 import {
+  GENERATION_API_ERROR_CODES,
+  GenerationApiError,
   requestMaterialGeneration,
 } from "@/lib/generation/generationApi";
 
@@ -83,6 +85,17 @@ const TASK_COUNT_OPTIONS = [
   },
 ];
 
+const GENERATION_ACCESS_ISSUES = {
+  [GENERATION_API_ERROR_CODES.SUBSCRIPTION_REQUIRED]: {
+    actionLabel:
+      "Przejdź do subskrypcji",
+  },
+  [GENERATION_API_ERROR_CODES.GENERATION_LIMIT_EXHAUSTED]: {
+    actionLabel:
+      "Sprawdź limit i okres",
+  },
+};
+
 
 export default function SubjectGeneratorPage() {
   const params = useParams();
@@ -132,7 +145,7 @@ const [isGenerating, setIsGenerating] =
   useState(false);
 
 const [generationError, setGenerationError] =
-  useState("");
+  useState(null);
 
 const [generationOutput, setGenerationOutput] =
   useState(null);
@@ -150,7 +163,7 @@ function handleMaterialTypeChange(event) {
   setSelectedMaterialType(
     materialType
   );
-  setGenerationError("");
+  setGenerationError(null);
   setGenerationOutput(null);
   setPartialSources(null);
 
@@ -177,7 +190,7 @@ function handleProfileChange(profileValue) {
 async function runGeneration({
   acceptPartialSources,
 }) {
-  setGenerationError("");
+  setGenerationError(null);
   setGenerationOutput(null);
 
   if (
@@ -186,16 +199,22 @@ async function runGeneration({
       : !selectedLessonTopicId
   ) {
     setGenerationError(
-      isTest
-        ? "Najpierw wybierz dział."
-        : "Najpierw wybierz temat lekcji."
+      {
+        message:
+          isTest
+            ? "Najpierw wybierz dział."
+            : "Najpierw wybierz temat lekcji.",
+      }
     );
     return;
   }
 
   if (selectedProfiles.length === 0) {
     setGenerationError(
-      "Wybierz co najmniej jeden profil ucznia."
+      {
+        message:
+          "Wybierz co najmniej jeden profil ucznia.",
+      }
     );
     return;
   }
@@ -217,7 +236,10 @@ if (
     selectedProfiles.length
 ) {
   setGenerationError(
-    "Nie udało się przygotować danych wybranego materiału."
+    {
+      message:
+        "Nie udało się przygotować danych wybranego materiału.",
+    }
   );
   return;
 }
@@ -274,11 +296,17 @@ if (
 });
 
   } catch (error) {
-    setGenerationError(
-      error instanceof Error
-        ? error.message
-        : "Nie udało się wygenerować materiału."
-    );
+    setGenerationError({
+      code:
+        error instanceof
+        GenerationApiError
+          ? error.code
+          : "",
+      message:
+        error instanceof Error
+          ? error.message
+          : "Nie udało się wygenerować materiału.",
+    });
   } finally {
     setIsGenerating(false);
   }
@@ -311,6 +339,13 @@ const canGenerate =
   isMaterialGenerationEnabled(selectedMaterialType) &&
   selectedProfiles.length > 0 &&
   !isGenerating;
+
+const generationAccessIssue =
+  generationError?.code
+    ? GENERATION_ACCESS_ISSUES[
+        generationError.code
+      ] || null
+    : null;
 
   if (isLoading) {
     return (
@@ -714,11 +749,32 @@ const canGenerate =
 ) : null}
 
 {generationError ? (
-  <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-4">
-    <p className="text-sm text-red-200">
-      {generationError}
-    </p>
-  </div>
+  generationAccessIssue ? (
+    <div
+      className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4"
+      role="alert"
+    >
+      <p className="text-sm text-amber-100">
+        {generationError.message}
+      </p>
+
+      <Link
+        href="/subskrypcja"
+        className="mt-3 inline-flex items-center justify-center rounded-lg bg-amber-400 px-4 py-2 text-sm font-semibold text-zinc-950 transition hover:bg-amber-300"
+      >
+        {generationAccessIssue.actionLabel}
+      </Link>
+    </div>
+  ) : (
+    <div
+      className="rounded-xl border border-red-500/30 bg-red-500/10 p-4"
+      role="alert"
+    >
+      <p className="text-sm text-red-200">
+        {generationError.message}
+      </p>
+    </div>
+  )
 ) : null}
 
 

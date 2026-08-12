@@ -424,14 +424,12 @@ export default function SubscriptionPage() {
           </div>
         ) : null}
 
-        {billing.subscription.cancelAtPeriodEnd && isStripeAccess ? (
+        {billing.subscription.scheduledCancellationAt && isStripeAccess ? (
           <div className="flex gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-100">
             <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
             <p>
-              Subskrypcja została anulowana, ale dostęp pozostaje aktywny
-              {billing.subscription.currentPeriodEnd
-                ? ` do ${formatDate(billing.subscription.currentPeriodEnd)}.`
-                : " do końca bieżącego okresu."}
+              Subskrypcja została anulowana, ale dostęp pozostaje aktywny do{" "}
+              {formatDate(billing.subscription.scheduledCancellationAt)}.
             </p>
           </div>
         ) : null}

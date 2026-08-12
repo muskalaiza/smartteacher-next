@@ -33,6 +33,7 @@ const baseSubscription = {
   customer: "cus_test_1",
   status: "active",
   cancel_at_period_end: false,
+  cancel_at: null,
   canceled_at: null,
   ended_at: null,
   metadata: {
@@ -145,6 +146,7 @@ assert.deepEqual(
       "2026-08-09T21:13:20.000Z",
     status: "active",
     cancelAtPeriodEnd: false,
+    cancelAt: null,
     currentPeriodStart:
       "2026-08-09T21:13:20.000Z",
     currentPeriodEnd:
@@ -152,6 +154,33 @@ assert.deepEqual(
     canceledAt: null,
     endedAt: null,
   }
+)
+
+const flexibleCancellation =
+  normalizeStripeSubscription({
+    subscription: {
+      ...baseSubscription,
+      billing_mode: {
+        type: "flexible",
+      },
+      cancel_at_period_end: false,
+      cancel_at: 1788988400,
+      canceled_at: 1786311100,
+    },
+    event: baseEvent,
+  })
+
+assert.equal(
+  flexibleCancellation.cancelAtPeriodEnd,
+  false
+)
+assert.equal(
+  flexibleCancellation.cancelAt,
+  "2026-09-09T21:13:20.000Z"
+)
+assert.equal(
+  flexibleCancellation.canceledAt,
+  "2026-08-09T21:31:40.000Z"
 )
 
 assert.throws(
@@ -233,6 +262,18 @@ assert.match(
   stripeServer,
   /items\.data\.price/
 )
+assert.match(
+  stripeServer,
+  /"cancel_at"/
+)
+assert.match(
+  stripeServer,
+  /p_cancel_at:/
+)
+assert.match(
+  stripeServer,
+  /scheduledCancellationAt/
+)
 
 const stripeContract =
   await readFile(
@@ -276,6 +317,68 @@ assert.match(
 assert.match(
   migration,
   /on conflict \(provider_event_id\)/i
+)
+
+const cancelAtMigration =
+  await readFile(
+    new URL(
+      "../supabase/sql/2026-08-12_stripe_flexible_cancel_at.sql",
+      import.meta.url
+    ),
+    "utf8"
+  )
+
+assert.match(
+  cancelAtMigration,
+  /add column cancel_at timestamptz null/i
+)
+assert.match(
+  cancelAtMigration,
+  /p_cancel_at timestamptz default null/i
+)
+assert.match(
+  cancelAtMigration,
+  /drop function public\.sync_stripe_subscription_event/i
+)
+assert.match(
+  cancelAtMigration,
+  /to service_role/i
+)
+assert.match(
+  cancelAtMigration,
+  /from public, anon, authenticated/i
+)
+
+const billingApi =
+  await readFile(
+    new URL(
+      "../lib/billing/billingApi.js",
+      import.meta.url
+    ),
+    "utf8"
+  )
+
+assert.match(
+  billingApi,
+  /subscription\.scheduledCancellationAt/
+)
+
+const subscriptionPage =
+  await readFile(
+    new URL(
+      "../app/subskrypcja/page.jsx",
+      import.meta.url
+    ),
+    "utf8"
+  )
+
+assert.match(
+  subscriptionPage,
+  /billing\.subscription\.scheduledCancellationAt/
+)
+assert.doesNotMatch(
+  subscriptionPage,
+  /billing\.subscription\.cancelAtPeriodEnd/
 )
 
 console.log(

@@ -29,7 +29,7 @@ export default function Sidebar() {
 
   const menuItems = [
     {
-      name: "Generator",
+      name: "Kreator",
       icon: Sparkles,
       href: buildSubjectHref(subjectKey, "generator"),
     },
@@ -39,7 +39,7 @@ export default function Sidebar() {
       href: buildSubjectHref(subjectKey, "historia"),
     },
     {
-      name: "Biblioteka materiałów",
+      name: "Biblioteka",
       icon: Library,
       href: buildSubjectHref(subjectKey, "biblioteka"),
     },

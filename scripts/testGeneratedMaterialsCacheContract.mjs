@@ -183,6 +183,49 @@ for (const claimState of [
   )
 }
 
+for (const [
+  databaseCode,
+  claimState,
+] of [
+  [
+    "free_plan_material_not_allowed",
+    "free_material_not_allowed",
+  ],
+  [
+    "free_plan_material_type_exhausted",
+    "free_material_type_exhausted",
+  ],
+  [
+    "free_plan_topic_mismatch",
+    "free_topic_mismatch",
+  ],
+]) {
+  const { client } =
+    createSupabaseAdmin({
+      claim_generated_material: {
+        data: null,
+        error: {
+          message: databaseCode,
+        },
+      },
+    })
+
+  const claim =
+    await claimGeneratedMaterial({
+      supabaseAdmin: client,
+      claimData: buildClaimData(),
+    })
+
+  assert.equal(
+    claim.state,
+    claimState
+  )
+  assert.equal(
+    claim.generatedMaterialId,
+    null
+  )
+}
+
 {
   const {
     client,

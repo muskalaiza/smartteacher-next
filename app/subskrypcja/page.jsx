@@ -43,6 +43,7 @@ const SUBSCRIPTION_STATUS_LABELS = {
 const BILLING_INTERVAL_LABELS = {
   day: "dziennie",
   month: "miesięcznie",
+  one_time: "jednorazowo",
   week: "tygodniowo",
   year: "rocznie",
 };
@@ -198,10 +199,12 @@ export default function SubscriptionPage() {
   const isAccessActive = billing?.access.status === "active";
   const isInternalAccess =
     isAccessActive && billing?.access.source === "internal";
+  const isFreeAccess =
+    isAccessActive && billing?.access.source === "free";
   const isStripeAccess =
     isAccessActive && billing?.access.source === "stripe";
   const isWaitingForCheckoutSync =
-    checkoutResult === "success" && !isAccessActive;
+    checkoutResult === "success" && !isStripeAccess;
 
   const usagePercent = useMemo(() => {
     if (!billing?.usage.generationLimit) {
@@ -327,6 +330,8 @@ export default function SubscriptionPage() {
     billing.plan.billingInterval;
   const statusLabel = isInternalAccess
     ? "Dostęp właścicielski"
+    : isFreeAccess
+      ? "Aktywny Plan Free"
     : isStripeAccess
       ? "Aktywna subskrypcja"
       : getSubscriptionStatusLabel(billing.subscription.status);
@@ -387,7 +392,7 @@ export default function SubscriptionPage() {
           </div>
         ) : null}
 
-        {checkoutResult === "success" && isAccessActive ? (
+        {checkoutResult === "success" && isStripeAccess ? (
           <div className="flex gap-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-4 text-sm text-emerald-100">
             <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
             <p>Płatność została zakończona, a dostęp jest aktywny.</p>
@@ -474,10 +479,15 @@ export default function SubscriptionPage() {
                   Limit planu
                 </p>
                 <p className="mt-2 text-lg font-semibold text-zinc-100">
-                  {billing.plan.generationLimit} kompletów
+                  {billing.plan.generationLimit}{" "}
+                  {isFreeAccess
+                    ? "materiały"
+                    : "kompletów"}
                 </p>
                 <p className="mt-1 text-xs leading-5 text-zinc-500">
-                  Materiały generowane w każdym okresie rozliczeniowym.
+                  {isFreeAccess
+                    ? "Jedna karta pracy i jedna kartkówka z tego samego tematu."
+                    : "Materiały generowane w każdym okresie rozliczeniowym."}
                 </p>
               </div>
 
@@ -491,6 +501,8 @@ export default function SubscriptionPage() {
                 <p className="mt-1 text-xs leading-5 text-zinc-500">
                   {isInternalAccess
                     ? "Dostęp przyznany bez rozliczenia Stripe."
+                    : isFreeAccess
+                      ? "Jednorazowy dostęp bez karty płatniczej."
                     : isAccessActive
                       ? "Dostęp rozliczany przez Stripe."
                       : "Aktywacja jest wymagana do generowania materiałów."}
@@ -531,7 +543,9 @@ export default function SubscriptionPage() {
                 )}
                 {activeAction === "checkout"
                   ? "Otwieranie płatności..."
-                  : "Aktywuj subskrypcję"}
+                  : isFreeAccess
+                    ? "Przejdź na plan miesięczny"
+                    : "Aktywuj subskrypcję"}
               </button>
             ) : null}
 
@@ -576,7 +590,9 @@ export default function SubscriptionPage() {
                     {billing.usage.remainingCount}
                   </p>
                   <p className="mt-1 text-sm text-zinc-400">
-                    kompletów pozostało
+                    {isFreeAccess
+                      ? "materiałów pozostało"
+                      : "kompletów pozostało"}
                   </p>
                 </div>
 
@@ -617,13 +633,48 @@ export default function SubscriptionPage() {
                   </dd>
                 </div>
 
-                <div className="border-t border-zinc-800 pt-3">
-                  <dt className="text-zinc-500">Bieżący okres</dt>
-                  <dd className="mt-1 font-medium leading-6 text-zinc-200">
-                    {formatDate(billing.usage.periodStart)} –{" "}
-                    {formatDate(billing.usage.periodEnd)}
-                  </dd>
-                </div>
+                {isFreeAccess ? (
+                  <>
+                    <div className="border-t border-zinc-800 pt-3">
+                      <dt className="text-zinc-500">Karta pracy</dt>
+                      <dd className="mt-1 font-medium text-zinc-200">
+                        {billing.freePlan?.worksheetUsed
+                          ? "Wykorzystana"
+                          : billing.freePlan?.worksheetReserved
+                            ? "W trakcie generowania"
+                            : "Dostępna"}
+                      </dd>
+                    </div>
+
+                    <div>
+                      <dt className="text-zinc-500">Kartkówka</dt>
+                      <dd className="mt-1 font-medium text-zinc-200">
+                        {billing.freePlan?.quizUsed
+                          ? "Wykorzystana"
+                          : billing.freePlan?.quizReserved
+                            ? "W trakcie generowania"
+                            : "Dostępna"}
+                      </dd>
+                    </div>
+
+                    <div>
+                      <dt className="text-zinc-500">Zakres</dt>
+                      <dd className="mt-1 font-medium leading-6 text-zinc-200">
+                        {billing.freePlan?.topicAssigned
+                          ? "Jeden temat został już przypisany."
+                          : "Temat zostanie przypisany po pierwszym udanym generowaniu."}
+                      </dd>
+                    </div>
+                  </>
+                ) : (
+                  <div className="border-t border-zinc-800 pt-3">
+                    <dt className="text-zinc-500">Bieżący okres</dt>
+                    <dd className="mt-1 font-medium leading-6 text-zinc-200">
+                      {formatDate(billing.usage.periodStart)} –{" "}
+                      {formatDate(billing.usage.periodEnd)}
+                    </dd>
+                  </div>
+                )}
               </dl>
             </section>
           ) : (
@@ -639,14 +690,32 @@ export default function SubscriptionPage() {
             </section>
           )}
 
+          {isFreeAccess ? (
+            <section className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-6">
+              <h2 className="text-sm font-semibold text-zinc-100">
+                Zestaw startowy
+              </h2>
+              <p className="mt-2 text-sm leading-6 text-zinc-400">
+                Tutaj będzie można pobrać przygotowany CSV z jednym tematem i odpowiadający mu materiał DOCX.
+              </p>
+              <button
+                type="button"
+                disabled
+                className="mt-4 w-full cursor-not-allowed rounded-xl border border-zinc-800 bg-zinc-900 px-4 py-2.5 text-sm font-medium text-zinc-500"
+              >
+                Zestaw w przygotowaniu
+              </button>
+            </section>
+          ) : null}
+
           <section className="rounded-2xl border border-sky-500/20 bg-sky-500/10 p-6">
             <h2 className="text-sm font-semibold text-sky-100">
               Jak liczony jest limit?
             </h2>
             <p className="mt-2 text-sm leading-6 text-sky-100/80">
-              Jeden komplet to pojedyncze generowanie wybranego materiału dla
-              wskazanych profili. Rezerwacja oznacza generowanie, które jest w
-              trakcie rozliczania.
+              {isFreeAccess
+                ? "Plan Free rozlicza osobno jedną kartę pracy i jedną kartkówkę. Cache HIT oraz ponowne otwarcie materiału nie zużywają kolejnej jednostki."
+                : "Jeden komplet to pojedyncze generowanie wybranego materiału dla wskazanych profili. Rezerwacja oznacza generowanie, które jest w trakcie rozliczania."}
             </p>
           </section>
         </aside>

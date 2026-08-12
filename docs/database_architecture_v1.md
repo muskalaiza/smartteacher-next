@@ -1,10 +1,10 @@
 # SmartTeacher — database_architecture_v1.md
 
-**Wersja dokumentu:** 3.1  
+**Wersja dokumentu:** 3.2  
 **Data aktualizacji:** 11.08.2026  
 **Projekt:** `smartteacher-next`  
 **Supabase:** `smartteacher-next-dev`  
-**Status:** aktualna architektura robocza; Generator karty pracy, kartkówki i sprawdzianu, atomowy cache, Historia, wspólny klucz, punktacja, indywidualna skala ocen, eksport DOCX, serwerowa telemetria OpenAI, atomowy limit generowania, backend Stripe oraz pełny test Sandbox są zakończone; pakiet subskrypcji pozostaje otwarty na UI i regresję  
+**Status:** aktualna architektura robocza; Generator karty pracy, kartkówki i sprawdzianu, atomowy cache, Historia, wspólny klucz, punktacja, indywidualna skala ocen, eksport DOCX, serwerowa telemetria OpenAI oraz pełny pakiet limitów i subskrypcji są zakończone  
 **Uwaga:** nazwa pliku pozostaje bez zmiany ze względu na ciągłość źródeł projektu.
 
 ---
@@ -1853,7 +1853,7 @@ dokładnie jedno zdarzenie
 
 Migracja, live schema, constraints, indeksy, RLS, granty, instrumentacja, lint i build zostały potwierdzone. Pakiet został zatwierdzony w repozytorium.
 
-## 19. LIMITY I SUBSKRYPCJE — FUNDAMENT I BACKEND WDROŻONE
+## 19. LIMITY I SUBSKRYPCJE — WDROŻONE
 
 ### 19.1. Obowiązujący kontrakt planu
 
@@ -2124,6 +2124,27 @@ POST /api/billing/webhook
 → weryfikacja podpisu i synchronizacja zdarzenia
 ```
 
+Warstwa UI korzysta z tego kontraktu przez:
+
+```text
+app/subskrypcja/page.jsx
+app/subskrypcja/layout.jsx
+lib/billing/billingApi.js
+components/layout/Topbar.jsx
+```
+
+Strona `/subskrypcja` nie odczytuje tabel billingowych bezpośrednio. Pokazuje status dostępu, plan, okres, wykorzystanie limitu i działania dozwolone przez backend. Konto z aktywnym `internal_entitlement` nie otrzymuje Checkout. Konto z klientem Stripe może przejść do portalu, a stan oczekiwania po udanym Checkout nie pozwala ponownie rozpocząć zakupu przed synchronizacją webhooka.
+
+Generator zachowuje kontrakt blokad przez:
+
+```text
+lib/generation/generationApi.js
+app/przedmioty/[subjectKey]/generator/page.jsx
+scripts/testGenerationAccessUiContract.mjs
+```
+
+RPC zwraca wewnętrzny stan `limit_exhausted`, a Route Handler mapuje go na kod frontendowy `generation_limit_exhausted`. Kod `subscription_required` pozostaje taki sam. `GenerationApiError` zachowuje kod, status HTTP i komunikat; UI pokazuje dla obu blokad bursztynowe komunikaty z przejściem do `/subskrypcja`. Inne błędy pozostają czerwone i nie otrzymują CTA subskrypcyjnego.
+
 Wymagane zmienne serwerowe:
 
 ```text
@@ -2198,17 +2219,13 @@ internal_entitlements
 
 `billing_webhook_events` nie ma relacji właścicielskiej do `auth.users` i pozostało jako techniczny rejestr przetworzonych webhooków.
 
-### 19.12. Granica otwartego pakietu
+### 19.12. Zamknięcie pakietu
 
-Fundament bazy, backend i pełny test Sandbox są zakończone. Cały pakiet pozostaje otwarty do czasu:
+Fundament bazy, backend Stripe, pełny test Sandbox, cleanup danych testowych, strona `/subskrypcja`, komunikaty Generatora i końcowa regresja są zakończone.
 
-```text
-wykonania strony /subskrypcja
-→ podłączenia komunikatów limitu i dostępu w UI Generatora
-→ pełnej regresji
-```
+Końcowa regresja objęła test kontraktu komunikatów Generatora, test cache, test Stripe, ESLint, build, ręczny test strony na koncie właścicielskim oraz zwykłe generowanie materiału. Konto właścicielskie pokazało aktywny dostęp, użycie `1 z 20` i brak Checkout. Generowanie oraz otwarcie materiału działały bez regresji.
 
-Strona UI należy do tego samego pakietu limitów i subskrypcji; nie jest odłożona jako osobny przyszły etap.
+Pakiet limitów i subskrypcji jest zamknięty i nie należy go ponownie otwierać bez wykrytej regresji albo nowej decyzji biznesowej.
 
 ## 20. STORAGE
 
@@ -2295,14 +2312,14 @@ Zakończone dodatkowo:
 38. backend Stripe: status, Checkout, portal i webhook
 39. końcowy plan 29 zł / 20 kompletów oraz przypisanie Stripe price_id
 40. konfiguracja sekretów, webhooka i kontrolowany test Stripe Sandbox
+41. strona /subskrypcja oraz komunikaty limitu i dostępu w UI Generatora
+42. pełna regresja i zamknięcie pakietu limitów i subskrypcji
 ```
 
 Następnie:
 
 ```text
-41. strona /subskrypcja oraz komunikaty limitu i dostępu w UI Generatora
-42. pełna regresja i zamknięcie pakietu limitów i subskrypcji
-43. własne SMTP i testy procesów konta
+43. audyt hostingu, wybór własnego SMTP i testy procesów konta
 44. kontrolowany start sprzedaży i pierwsi płacący klienci
 45. Monitoring kosztów — Pakiet 2 po osobnym audycie kontraktu
 ```
@@ -2387,4 +2404,5 @@ Następnie:
 76. Webhook weryfikuje podpis na surowym body, pobiera aktualną subskrypcję ze Stripe i synchronizuje ją idempotentnie przez `provider_event_id`.
 77. Backend sprawdza cenę Stripe względem planu w Supabase przed utworzeniem Checkout; sama migracja SQL nie weryfikuje zdalnego obiektu Stripe.
 78. Pełny test Stripe Sandbox, portal klienta, audyt RLS i cleanup danych testowych są zakończone.
-79. Cały pakiet limitów i subskrypcji pozostaje otwarty do wykonania strony `/subskrypcja`, podłączenia komunikatów Generatora i końcowej regresji.
+79. Pakiet limitów i subskrypcji jest zakończony: obejmuje fundament limitu, backend Stripe, pełny test Sandbox, cleanup danych testowych, stronę `/subskrypcja`, komunikaty Generatora i końcową regresję.
+80. RPC używa wewnętrznego stanu `limit_exhausted`, natomiast kontrakt frontendowy `/api/generate` używa kodu `generation_limit_exhausted`; `subscription_required` pozostaje wspólną nazwą obu warstw.

@@ -92,7 +92,11 @@ const GENERATION_ACCESS_ISSUES = {
   },
   [GENERATION_API_ERROR_CODES.GENERATION_LIMIT_EXHAUSTED]: {
     actionLabel:
-      "Sprawdź limit i okres",
+      "Sprawdź plan i wykorzystanie",
+  },
+  [GENERATION_API_ERROR_CODES.FREE_PLAN_RESTRICTION]: {
+    actionLabel:
+      "Zobacz zasady Planu Free",
   },
 };
 
@@ -398,7 +402,7 @@ const generationAccessIssue =
           <p className="text-sm font-medium text-sky-400">{subjectLabel}</p>
 
           <h1 className="text-3xl font-bold tracking-tight text-zinc-50 md:text-4xl">
-            Generator materiałów
+            Kreator materiałów
           </h1>
 
           <p className="text-sm leading-6 text-zinc-400">

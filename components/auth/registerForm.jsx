@@ -5,6 +5,7 @@
 "use client"
 
 import React, { useState } from "react"
+import Link from "next/link"
 import { Button } from "../ui/button"
 
 export default function RegisterForm({
@@ -197,6 +198,17 @@ setRegisterMessage(
         >
           Zaloguj się
         </button>
+      </p>
+
+      <p className="text-center text-xs text-zinc-500">
+        Zanim założysz konto, możesz{" "}
+        <Link
+          href="/cennik"
+          className="font-medium text-zinc-300 underline-offset-4 transition hover:text-white hover:underline"
+        >
+          porównać oba plany
+        </Link>
+        .
       </p>
     </form>
   )

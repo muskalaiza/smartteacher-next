@@ -47,7 +47,14 @@ for (const {
       "generation_limit_exhausted",
     httpStatus: 429,
     actionLabel:
-      "Sprawdź limit i okres",
+      "Sprawdź plan i wykorzystanie",
+  },
+  {
+    endpointStatus:
+      "free_plan_restriction",
+    httpStatus: 403,
+    actionLabel:
+      "Zobacz zasady Planu Free",
   },
 ]) {
   assert.match(
@@ -72,6 +79,15 @@ for (const {
     `${endpointStatus}: Generator powinien zawierać właściwe CTA.`
   )
 }
+
+assert.match(
+  generateRoute,
+  /free_plan_restriction[\s\S]*?429/
+)
+assert.match(
+  generateRoute,
+  /free_plan_restriction[\s\S]*?409/
+)
 
 assert.match(
   generationApi,

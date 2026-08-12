@@ -10,6 +10,10 @@ import {
 } from "@/lib/aiUsage/recordAiUsageEvent"
 
 import {
+  ensureFreePlanEntitlement,
+} from "@/lib/billing/freePlanServer"
+
+import {
   buildGenerationIdentity,
 } from "@/lib/generation/buildGenerationIdentity"
 
@@ -852,6 +856,11 @@ export async function POST(
       11. Atomowa decyzja:
       HIT / MISS / in progress.
     */
+    await ensureFreePlanEntitlement({
+      supabaseAdmin,
+      ownerId: user.id,
+    })
+
     const cacheClaim =
       await claimGeneratedMaterial({
         supabaseAdmin,
@@ -1004,9 +1013,57 @@ export async function POST(
             "generation_limit_exhausted",
 
           error:
-            "Limit generowań w bieżącym okresie rozliczeniowym został wykorzystany.",
+            "Dostępny limit generowań został wykorzystany.",
         },
         429
+      )
+    }
+
+    if (
+      cacheClaim.state ===
+        "free_material_not_allowed"
+    ) {
+      return jsonResponse(
+        {
+          status:
+            "free_plan_restriction",
+
+          error:
+            "Plan Free obejmuje jedną kartę pracy i jedną kartkówkę. Sprawdzian jest dostępny w planie miesięcznym.",
+        },
+        403
+      )
+    }
+
+    if (
+      cacheClaim.state ===
+        "free_material_type_exhausted"
+    ) {
+      return jsonResponse(
+        {
+          status:
+            "free_plan_restriction",
+
+          error:
+            "Ten rodzaj materiału został już wykorzystany w Planie Free. Możesz przejść na plan miesięczny.",
+        },
+        429
+      )
+    }
+
+    if (
+      cacheClaim.state ===
+        "free_topic_mismatch"
+    ) {
+      return jsonResponse(
+        {
+          status:
+            "free_plan_restriction",
+
+          error:
+            "Oba darmowe materiały muszą dotyczyć tego samego tematu wybranego przy pierwszym udanym generowaniu.",
+        },
+        409
       )
     }
 

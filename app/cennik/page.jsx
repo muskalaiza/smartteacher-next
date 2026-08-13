@@ -240,7 +240,7 @@ export default function PricingPage() {
       <div className="mx-auto max-w-6xl px-5 py-16 sm:px-8 sm:py-20">
         <header className="mx-auto max-w-3xl text-center">
           <p className="text-sm font-semibold text-sky-400">
-            Prosty cennik
+            Cennik
           </p>
           <h1 className="mt-4 text-4xl font-bold tracking-tight text-zinc-50 sm:text-5xl">
             Zacznij bezpłatnie. Przejdź dalej, gdy SmartTeacher sprawdzi się w Twojej pracy.

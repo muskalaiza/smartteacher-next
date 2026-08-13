@@ -694,15 +694,28 @@ export default function SubscriptionPage() {
                 Zestaw startowy
               </h2>
               <p className="mt-2 text-sm leading-6 text-zinc-400">
-                Tutaj będzie można pobrać przygotowany CSV z jednym tematem i odpowiadający mu materiał DOCX.
+                Pobierz przykładowy plan lekcji CSV i odpowiadający mu materiał
+                DOCX. Możesz wgrać je do Biblioteki i wykorzystać do
+                przetestowania SmartTeacher.
               </p>
-              <button
-                type="button"
-                disabled
-                className="mt-4 w-full cursor-not-allowed rounded-xl border border-zinc-800 bg-zinc-900 px-4 py-2.5 text-sm font-medium text-zinc-500"
-              >
-                Zestaw w przygotowaniu
-              </button>
+
+              <div className="mt-4 space-y-3">
+                <a
+                  href="/zestaw-startowy/obiektowe_klasa_druga.csv"
+                  download
+                  className="flex w-full items-center justify-center rounded-xl border border-zinc-700 bg-zinc-900 px-4 py-2.5 text-sm font-medium text-zinc-100 transition hover:border-zinc-600 hover:bg-zinc-800 focus:outline-none focus:ring-2 focus:ring-zinc-500/30"
+                >
+                  Pobierz plan lekcji CSV
+                </a>
+
+                <a
+                  href="/zestaw-startowy/klasy_i_obiekty_cpp.docx"
+                  download
+                  className="flex w-full items-center justify-center rounded-xl border border-zinc-700 bg-zinc-900 px-4 py-2.5 text-sm font-medium text-zinc-100 transition hover:border-zinc-600 hover:bg-zinc-800 focus:outline-none focus:ring-2 focus:ring-zinc-500/30"
+                >
+                  Pobierz materiał DOCX
+                </a>
+              </div>
             </section>
           ) : null}
 

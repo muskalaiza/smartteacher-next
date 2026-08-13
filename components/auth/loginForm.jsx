@@ -4,8 +4,8 @@
 "use client"
 
 import React, { useState } from "react"
+import { Eye, EyeOff } from "lucide-react"
 import { Button } from "../ui/button"
-import { Eye, EyeOff } from "lucide-react";
 
 export default function LoginForm({
   loginEmail,
@@ -17,8 +17,8 @@ export default function LoginForm({
   onRegisterClick,
   onResetPasswordClick,
 }) {
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [showPassword, setShowPassword] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [showPassword, setShowPassword] = useState(false)
 
   async function onSubmit(event) {
     event.preventDefault()
@@ -78,7 +78,7 @@ export default function LoginForm({
             type={showPassword ? "text" : "password"}
             required
             autoComplete="off"
-            placeholder="••••••••"
+            placeholder="Wpisz bezpieczne hasło, min. 8 znaków"
             value={loginPassword}
             onChange={(event) => setLoginPassword(event.target.value)}
             className="w-full rounded-md border border-zinc-800 bg-zinc-950 px-3 py-2 pr-10 text-sm text-zinc-200 transition-colors placeholder:text-zinc-600 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"

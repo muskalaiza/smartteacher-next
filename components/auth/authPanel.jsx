@@ -31,7 +31,19 @@ export default function AuthPanel() {
     })
 
     if (error) {
-      setLoginError("Adres e-mail nie został jeszcze potwierdzony. Sprawdź skrzynkę i kliknij link aktywacyjny.")
+      if (error.code === "email_not_confirmed") {
+        setLoginError(
+          "Adres e-mail nie został jeszcze potwierdzony. Sprawdź skrzynkę i kliknij link aktywacyjny."
+        )
+        return
+      }
+
+      if (error.code === "invalid_credentials") {
+        setLoginError("Nieprawidłowy adres e-mail lub hasło.")
+        return
+      }
+
+      setLoginError("Nie udało się zalogować. Spróbuj ponownie.")
       return
     }
 
@@ -56,7 +68,7 @@ export default function AuthPanel() {
 
     setLoginEmail(email)
 
-    return "Konto zostało utworzone. Sprawdź skrzynkę pocztową i potwierdź adres e-mail."
+    return "Sprawdź skrzynkę e-mail. Jeśli nie otrzymasz wiadomości aktywacyjnej, ten adres może być już przypisany do konta. Spróbuj się zalogować lub zresetować hasło."
   }
 
   async function handleResetPassword(email) {

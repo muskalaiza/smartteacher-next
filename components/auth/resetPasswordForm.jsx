@@ -40,7 +40,7 @@ export default function ResetPasswordForm({
       await handleResetPassword(trimmedEmail)
 
       setResetMessage(
-        "Wysłaliśmy instrukcję zmiany hasła na podany adres e-mail."
+        "Jeśli konto dla tego adresu istnieje, wysłaliśmy instrukcję zmiany hasła."
       )
     } catch (error) {
       setResetError(
@@ -108,4 +108,3 @@ export default function ResetPasswordForm({
     </form>
   )
 }
-
